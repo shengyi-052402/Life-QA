@@ -17,6 +17,13 @@ public class PostCreateDTO implements Serializable {
     @NotBlank(message = "内容不能为空")
     private String content;
 
+    @NotBlank(message = "必须提供一段基本介绍介绍")
+    @Size(max = 500, message = "介绍文字过长")
+    private String summary;
+
+    @NotBlank(message = "必须上传背景封面图片")
+    private String coverImage;
+
     @NotNull(message = "请选择分类")
     private Long categoryId;
 

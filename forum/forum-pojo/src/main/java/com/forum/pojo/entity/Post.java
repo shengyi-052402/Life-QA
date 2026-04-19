@@ -28,6 +28,8 @@ public class Post implements Serializable {
 
     private String summary;
 
+    private String coverImage;
+
     private Long userId;
 
     private Long categoryId;

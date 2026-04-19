@@ -4,13 +4,19 @@ import { getToken } from '@/utils/auth'
 const routes = [
   {
     path: '/',
+    name: 'Landing',
+    component: () => import('@/views/Landing.vue'),
+    meta: { title: 'Welcome' }
+  },
+  {
+    path: '/',
     component: () => import('@/components/layout/BaseLayout.vue'),
     children: [
       {
-        path: '',
-        name: 'Home',
+        path: 'explore',
+        name: 'Explore',
         component: () => import('@/views/Home.vue'),
-        meta: { title: '首页' }
+        meta: { title: '探索大厅' }
       },
       {
         path: 'post/create',
@@ -23,6 +29,12 @@ const routes = [
         name: 'PostDetail',
         component: () => import('@/views/post/PostDetail.vue'),
         meta: { title: '帖子详情' }
+      },
+      {
+        path: 'search',
+        name: 'Search',
+        component: () => import('@/views/Search.vue'),
+        meta: { title: '搜索' }
       }
     ]
   },

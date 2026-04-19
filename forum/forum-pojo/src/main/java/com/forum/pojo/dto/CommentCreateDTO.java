@@ -1,16 +1,24 @@
 package com.forum.pojo.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
-import java.io.Serializable;
+import org.hibernate.validator.constraints.Length;
 
-/** 发表评论 DTO */
 @Data
-public class CommentCreateDTO implements Serializable {
-    @NotBlank(message = "评论内容不能为空")
-    private String content;
-    /** 父评论ID, 一级评论不传 */
+public class CommentCreateDTO {
+    
+    @NotNull(message = "所属帖子ID不能为空")
+    private Long postId;
+
+    // 0代表一级评论(直接回复帖子)，其他值代表回复的具体某条评论(盖楼)
+    @NotNull(message = "父评论ID不能为空")
     private Long parentId;
-    /** 回复目标用户ID */
+
+    // 被回复的用户ID(仅当是对评论进行回复时，用于在界面显示“回复 @张三”)
     private Long replyToUserId;
+
+    @NotBlank(message = "评论内容不能为空")
+    @Length(max = 1000, message = "评论内容不能超过1000字")
+    private String content;
 }

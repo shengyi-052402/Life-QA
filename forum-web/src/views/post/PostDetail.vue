@@ -44,12 +44,8 @@
             
             <el-divider />
             
-            <!-- 评论区占位，将在第三阶段实现 -->
-            <div class="comments-section" id="comments">
-              <h3>评论 ({{ post.commentCount }})</h3>
-              <div class="mt-20">
-                <el-empty description="评论功能开发中..." />
-              </div>
+            <div id="comments">
+              <CommentSection :post="post" @comment-added="fetchDetail" />
             </div>
           </template>
         </div>
@@ -86,9 +82,11 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getPostDetail, deletePost } from '@/api/post'
+import { togglePostLike, togglePostFavorite } from '@/api/comment'
 import { useUserStore } from '@/stores/user'
 import { View, Pointer, Star } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import CommentSection from '@/components/CommentSection.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -148,20 +146,32 @@ const handleDelete = () => {
 }
 
 // 互动预留
-const handleLike = () => {
+const handleLike = async () => {
   if (!userStore.token) {
     ElMessage.warning('请先登录')
     return
   }
-  ElMessage.info('点赞功能即将在下一阶段上线')
+  try {
+    const res = await togglePostLike(postId)
+    post.value.isLiked = res.data
+    post.value.likeCount += res.data ? 1 : -1
+  } catch (error) {
+    console.error(error)
+  }
 }
 
-const handleFavorite = () => {
+const handleFavorite = async () => {
    if (!userStore.token) {
     ElMessage.warning('请先登录')
     return
   }
-  ElMessage.info('收藏功能即将在下一阶段上线')
+  try {
+    const res = await togglePostFavorite(postId)
+    post.value.isFavorited = res.data
+    post.value.favoriteCount += res.data ? 1 : -1
+  } catch (error) {
+    console.error(error)
+  }
 }
 
 onMounted(() => {

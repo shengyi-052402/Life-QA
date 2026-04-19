@@ -8,9 +8,11 @@
         
         <div class="header-right">
           <el-input 
+            v-model="searchKeyword"
             placeholder="搜索帖子..." 
             class="search-input" 
             :prefix-icon="Search"
+            @keyup.enter="handleSearch"
             round 
           />
           
@@ -48,13 +50,14 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Search } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
 const userStore = useUserStore()
+const searchKeyword = ref('')
 
 onMounted(() => {
   if (userStore.token && !userStore.userInfo) {
@@ -70,6 +73,12 @@ const handleCommand = (command) => {
     router.push('/settings')
   } else if (command === 'profile') {
     router.push(`/user/${userStore.userInfo?.id}`)
+  }
+}
+
+const handleSearch = () => {
+  if (searchKeyword.value.trim()) {
+    router.push({ path: '/search', query: { q: searchKeyword.value.trim() } })
   }
 }
 </script>

@@ -31,7 +31,7 @@ public class JwtTokenInterceptor implements HandlerInterceptor {
             String method = request.getMethod();
             // 允许匿名访问的公开 GET 接口
             if ("GET".equalsIgnoreCase(method) && 
-               (uri.startsWith("/api/posts") || uri.startsWith("/api/categories") || uri.startsWith("/api/tags"))) {
+               (uri.startsWith("/api/posts") || uri.startsWith("/api/categories") || uri.startsWith("/api/tags") || uri.startsWith("/api/comments"))) {
                 return true;
             }
             

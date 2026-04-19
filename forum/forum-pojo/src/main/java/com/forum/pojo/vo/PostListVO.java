@@ -13,6 +13,7 @@ public class PostListVO implements Serializable {
     private Long id;
     private String title;
     private String summary;
+    private String coverImage;
     private UserVO author;
     private Long categoryId;
     private String categoryName;

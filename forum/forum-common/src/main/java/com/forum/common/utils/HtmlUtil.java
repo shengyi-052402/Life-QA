@@ -32,4 +32,15 @@ public class HtmlUtil {
         }
         return text.substring(0, length) + "...";
     }
+
+    /**
+     * 清理恶意HTML标签，防止 XSS 攻击
+     */
+    public static String clean(String html) {
+        if (html == null || html.isEmpty()) {
+            return "";
+        }
+        // 使用 Jsoup 内置的 Safelist 进行安全过滤，移除所有的危险脚本
+        return Jsoup.clean(html, org.jsoup.safety.Safelist.none());
+    }
 }

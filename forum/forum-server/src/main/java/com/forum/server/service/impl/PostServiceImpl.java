@@ -15,6 +15,8 @@ import com.forum.pojo.dto.PostUpdateDTO;
 import com.forum.pojo.entity.Category;
 import com.forum.pojo.entity.Post;
 import com.forum.pojo.entity.PostTag;
+import com.forum.pojo.entity.PostLike;
+import com.forum.pojo.entity.Favorite;
 import com.forum.pojo.entity.Tag;
 import com.forum.pojo.entity.User;
 import com.forum.pojo.vo.PostDetailVO;
@@ -46,19 +48,19 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
     private final PostTagMapper postTagMapper;
     private final UserService userService;
     private final CategoryService categoryService;
+    private final com.forum.server.mapper.PostLikeMapper postLikeMapper;
+    private final com.forum.server.mapper.FavoriteMapper favoriteMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createPost(PostCreateDTO dto) {
         Long userId = BaseContext.getCurrentId();
         
-        // 自动提取摘要 (前200字符纯文本)
-        String summary = HtmlUtil.getSummary(dto.getContent(), 200);
-
         Post post = Post.builder()
                 .title(dto.getTitle())
                 .content(dto.getContent())
-                .summary(summary)
+                .summary(dto.getSummary())
+                .coverImage(dto.getCoverImage())
                 .userId(userId)
                 .categoryId(dto.getCategoryId())
                 .viewCount(0)
@@ -124,10 +126,10 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
             }
         }
 
-        String summary = HtmlUtil.getSummary(dto.getContent(), 200);
         post.setTitle(dto.getTitle());
         post.setContent(dto.getContent());
-        post.setSummary(summary);
+        post.setSummary(dto.getSummary());
+        post.setCoverImage(dto.getCoverImage());
         post.setCategoryId(dto.getCategoryId());
         
         updateById(post);
@@ -209,9 +211,22 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
             vo.setTags(new ArrayList<>());
         }
 
-        // TODO: 查询当前用户是否点赞/收藏 (第3阶段)
+        // 当前用户是否点赞/收藏
         vo.setIsLiked(false);
         vo.setIsFavorited(false);
+        
+        Long currentUserId = BaseContext.getCurrentId();
+        if (currentUserId != null) {
+            long likeCount = postLikeMapper.selectCount(new LambdaQueryWrapper<PostLike>()
+                    .eq(PostLike::getPostId, id)
+                    .eq(PostLike::getUserId, currentUserId));
+            vo.setIsLiked(likeCount > 0);
+            
+            long favCount = favoriteMapper.selectCount(new LambdaQueryWrapper<Favorite>()
+                    .eq(Favorite::getPostId, id)
+                    .eq(Favorite::getUserId, currentUserId));
+            vo.setIsFavorited(favCount > 0);
+        }
 
         return vo;
     }
@@ -227,7 +242,9 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         }
 
         if (StringUtils.hasText(queryDTO.getKeyword())) {
-            wrapper.like(Post::getTitle, queryDTO.getKeyword());
+            wrapper.and(wq -> wq.like(Post::getTitle, queryDTO.getKeyword())
+                                .or()
+                                .like(Post::getSummary, queryDTO.getKeyword()));
         }
 
         // 排序规则
