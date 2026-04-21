@@ -15,18 +15,21 @@ import com.forum.pojo.entity.Comment;
 import com.forum.pojo.entity.CommentLike;
 import com.forum.pojo.entity.Post;
 import com.forum.pojo.entity.User;
+import com.forum.pojo.vo.CommentLocationVO;
 import com.forum.pojo.vo.CommentVO;
 import com.forum.pojo.vo.UserVO;
 import com.forum.server.mapper.CommentLikeMapper;
 import com.forum.server.mapper.CommentMapper;
 import com.forum.server.mapper.PostMapper;
 import com.forum.server.service.CommentService;
+import com.forum.server.service.NotificationService;
 import com.forum.server.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -38,29 +41,25 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
     private final UserService userService;
     private final PostMapper postMapper;
     private final CommentLikeMapper commentLikeMapper;
+    private final NotificationService notificationService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createComment(CommentCreateDTO dto) {
         Long userId = BaseContext.getCurrentId();
-        
-        // 校验帖子
+
         Post post = postMapper.selectById(dto.getPostId());
         if (post == null || post.getStatus() != 1) {
-            throw new BaseException("帖子不存在或已被查封");
+            throw new BaseException("帖子不存在或已被隐藏");
         }
 
-        // 校验父评论
         if (dto.getParentId() != 0L) {
             Comment parentComment = getById(dto.getParentId());
             if (parentComment == null || parentComment.getStatus() != 1) {
                 throw new BaseException("回复的评论不存在");
             }
-            // 确保顶级关系正确 (B站模式：所有回复均挂在根级下，或者挂在其顶级评论下)
-            // 简单处理：我们允许无限盖楼，但展示时展平关联到 parentId
         }
 
-        // 防 XSS 净化评论内容 (仅保留纯文本或少数安全标签)
         String safeContent = HtmlUtil.clean(dto.getContent());
 
         Comment comment = Comment.builder()
@@ -72,12 +71,31 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
                 .likeCount(0)
                 .status(1)
                 .build();
-        
+
         save(comment);
 
-        // 更新帖子的评论数
         post.setCommentCount(post.getCommentCount() + 1);
         postMapper.updateById(post);
+
+        if (dto.getParentId() != 0L && dto.getReplyToUserId() != null) {
+            notificationService.createNotification(
+                    dto.getReplyToUserId(),
+                    userId,
+                    "comment_reply",
+                    dto.getPostId(),
+                    comment.getId(),
+                    "回复了你的评论"
+            );
+        } else {
+            notificationService.createNotification(
+                    post.getUserId(),
+                    userId,
+                    "post_comment",
+                    dto.getPostId(),
+                    comment.getId(),
+                    "评论了你的帖子"
+            );
+        }
 
         return comment.getId();
     }
@@ -92,16 +110,13 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         }
 
         User currentUser = userService.getById(userId);
-        // 仅作者、由于是B站模式，甚至可以允许帖子作者删评论（预留判断此处仅允许超管和自己删）
         if (!comment.getUserId().equals(userId) && currentUser.getRole() != 1) {
             throw new ForbiddenException(MessageConstant.NO_PERMISSION);
         }
 
-        // 逻辑删除
         comment.setStatus(0);
         updateById(comment);
 
-        // 如果是根评论，其子评论也应该不予显示（或者前端递归处理），这里帖子总评论数 -1
         Post post = postMapper.selectById(comment.getPostId());
         if (post != null) {
             post.setCommentCount(Math.max(0, post.getCommentCount() - 1));
@@ -111,13 +126,13 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
 
     @Override
     public PageResult<CommentVO> getCommentPage(CommentPageQueryDTO dto) {
-        Long currentUserId = BaseContext.getCurrentId(); // 可能为null
+        Long currentUserId = BaseContext.getCurrentId();
 
         Page<Comment> pageParam = new Page<>(dto.getPage(), dto.getSize());
         LambdaQueryWrapper<Comment> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(Comment::getPostId, dto.getPostId())
-               .eq(Comment::getParentId, dto.getParentId()) // 只查对应层级
-               .eq(Comment::getStatus, 1);
+                .eq(Comment::getParentId, dto.getParentId())
+                .eq(Comment::getStatus, 1);
 
         if ("hot".equals(dto.getSort())) {
             wrapper.orderByDesc(Comment::getLikeCount).orderByDesc(Comment::getCreatedAt);
@@ -127,20 +142,18 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
 
         page(pageParam, wrapper);
 
-        List<CommentVO> voList = pageParam.getRecords().stream().map(c -> {
-            CommentVO vo = buildCommentVO(c, currentUserId);
-            // 如果是查询顶级评论，并且需要带出前2条子回复预览
+        List<CommentVO> voList = pageParam.getRecords().stream().map(comment -> {
+            CommentVO vo = buildCommentVO(comment, currentUserId);
             if (dto.getParentId() == 0L) {
-                // 查出该评论下的所有子回复数量
                 long replyCount = count(new LambdaQueryWrapper<Comment>()
-                        .eq(Comment::getParentId, c.getId())
+                        .eq(Comment::getParentId, comment.getId())
                         .eq(Comment::getStatus, 1));
                 vo.setReplyCount((int) replyCount);
 
                 if (replyCount > 0) {
-                    List<Comment> recentReplies = baseMapper.selectRecentReplies(dto.getPostId(), c.getId(), 2);
+                    List<Comment> recentReplies = baseMapper.selectRecentReplies(dto.getPostId(), comment.getId(), 2);
                     List<CommentVO> replyVOs = recentReplies.stream()
-                            .map(r -> buildCommentVO(r, currentUserId))
+                            .map(reply -> buildCommentVO(reply, currentUserId))
                             .collect(Collectors.toList());
                     vo.setReplies(replyVOs);
                 } else {
@@ -156,14 +169,47 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         return new PageResult<>(pageParam.getTotal(), voList);
     }
 
-    /**
-     * 辅助方法：将实体转VO并映射用户、点赞等状态
-     */
+    @Override
+    public CommentLocationVO getCommentLocation(Long commentId, Integer topSize, Integer replySize) {
+        Comment comment = getById(commentId);
+        if (comment == null || comment.getStatus() != 1) {
+            throw new BaseException("评论不存在");
+        }
+
+        int safeTopSize = Math.max(topSize, 1);
+        int safeReplySize = Math.max(replySize, 1);
+        Comment rootComment = comment.getParentId() == 0 ? comment : getById(comment.getParentId());
+        if (rootComment == null || rootComment.getStatus() != 1) {
+            throw new BaseException("评论不存在");
+        }
+
+        int topPage = calculatePage(rootComment.getPostId(), 0L, rootComment.getCreatedAt(), safeTopSize);
+        int replyPage = comment.getParentId() == 0
+                ? 1
+                : calculatePage(rootComment.getPostId(), rootComment.getId(), comment.getCreatedAt(), safeReplySize);
+
+        return CommentLocationVO.builder()
+                .postId(comment.getPostId())
+                .rootCommentId(rootComment.getId())
+                .commentId(comment.getId())
+                .topPage(topPage)
+                .replyPage(replyPage)
+                .build();
+    }
+
+    private int calculatePage(Long postId, Long parentId, LocalDateTime createdAt, int pageSize) {
+        long beforeCount = count(new LambdaQueryWrapper<Comment>()
+                .eq(Comment::getPostId, postId)
+                .eq(Comment::getParentId, parentId)
+                .eq(Comment::getStatus, 1)
+                .gt(Comment::getCreatedAt, createdAt));
+        return (int) (beforeCount / pageSize) + 1;
+    }
+
     private CommentVO buildCommentVO(Comment comment, Long currentUserId) {
         CommentVO vo = CommentVO.builder().build();
         BeanUtils.copyProperties(comment, vo);
-        
-        // 作者
+
         User author = userService.getById(comment.getUserId());
         if (author != null) {
             vo.setAuthor(UserVO.builder()
@@ -173,7 +219,6 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
                     .build());
         }
 
-        // 被回复的人
         if (comment.getReplyToUserId() != null) {
             User replyUser = userService.getById(comment.getReplyToUserId());
             if (replyUser != null) {
@@ -185,7 +230,6 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             }
         }
 
-        // 当前用户是否点赞
         vo.setIsLiked(false);
         if (currentUserId != null) {
             long count = commentLikeMapper.selectCount(new LambdaQueryWrapper<CommentLike>()

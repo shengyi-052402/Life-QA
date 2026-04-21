@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { login as loginApi, getCurrentUserInfo } from '@/api/auth'
+import { login as loginApi, getCurrentUserInfo, updateCurrentUserInfo } from '@/api/auth'
 import { getToken, setToken, removeToken } from '@/utils/auth'
+import { useNotificationStore } from '@/stores/notification'
 
 export const useUserStore = defineStore('user', () => {
   const token = ref(getToken())
@@ -17,9 +18,11 @@ export const useUserStore = defineStore('user', () => {
   }
 
   function logout() {
+    const notificationStore = useNotificationStore()
     token.value = null
     userInfo.value = null
     removeToken()
+    notificationStore.clear()
   }
 
   // 登录并存储 token
@@ -46,11 +49,18 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  async function updateProfile(profileForm) {
+    await updateCurrentUserInfo(profileForm)
+    return fetchUserInfo()
+  }
+
   return {
     token,
     userInfo,
     login,
     logout,
-    fetchUserInfo
+    fetchUserInfo,
+    updateProfile,
+    setUserInfo
   }
 })

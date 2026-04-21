@@ -22,3 +22,11 @@ export function getCurrentUserInfo() {
     method: 'get'
   })
 }
+
+export function updateCurrentUserInfo(data) {
+  return request({
+    url: '/auth/me',
+    method: 'put',
+    data
+  })
+}

@@ -14,6 +14,7 @@ import com.forum.server.mapper.FavoriteMapper;
 import com.forum.server.mapper.PostLikeMapper;
 import com.forum.server.mapper.PostMapper;
 import com.forum.server.service.InteractionService;
+import com.forum.server.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +28,7 @@ public class InteractionServiceImpl implements InteractionService {
     private final PostLikeMapper postLikeMapper;
     private final CommentLikeMapper commentLikeMapper;
     private final FavoriteMapper favoriteMapper;
+    private final NotificationService notificationService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -37,12 +39,13 @@ public class InteractionServiceImpl implements InteractionService {
         LambdaQueryWrapper<PostLike> wrapper = new LambdaQueryWrapper<PostLike>()
                 .eq(PostLike::getPostId, postId)
                 .eq(PostLike::getUserId, userId);
-        
+
         PostLike exist = postLikeMapper.selectOne(wrapper);
         if (exist == null) {
             postLikeMapper.insert(PostLike.builder().postId(postId).userId(userId).build());
             post.setLikeCount(post.getLikeCount() + 1);
             postMapper.updateById(post);
+            notificationService.createNotification(post.getUserId(), userId, "post_like", postId, null, "赞了你的帖子");
             return true;
         } else {
             postLikeMapper.delete(wrapper);
@@ -61,12 +64,13 @@ public class InteractionServiceImpl implements InteractionService {
         LambdaQueryWrapper<CommentLike> wrapper = new LambdaQueryWrapper<CommentLike>()
                 .eq(CommentLike::getCommentId, commentId)
                 .eq(CommentLike::getUserId, userId);
-        
+
         CommentLike exist = commentLikeMapper.selectOne(wrapper);
         if (exist == null) {
             commentLikeMapper.insert(CommentLike.builder().commentId(commentId).userId(userId).build());
             comment.setLikeCount(comment.getLikeCount() + 1);
             commentMapper.updateById(comment);
+            notificationService.createNotification(comment.getUserId(), userId, "comment_like", comment.getPostId(), commentId, "赞了你的评论");
             return true;
         } else {
             commentLikeMapper.delete(wrapper);
@@ -85,12 +89,13 @@ public class InteractionServiceImpl implements InteractionService {
         LambdaQueryWrapper<Favorite> wrapper = new LambdaQueryWrapper<Favorite>()
                 .eq(Favorite::getPostId, postId)
                 .eq(Favorite::getUserId, userId);
-        
+
         Favorite exist = favoriteMapper.selectOne(wrapper);
         if (exist == null) {
             favoriteMapper.insert(Favorite.builder().postId(postId).userId(userId).build());
             post.setFavoriteCount(post.getFavoriteCount() + 1);
             postMapper.updateById(post);
+            notificationService.createNotification(post.getUserId(), userId, "post_favorite", postId, null, "收藏了你的帖子");
             return true;
         } else {
             favoriteMapper.delete(wrapper);
@@ -103,7 +108,7 @@ public class InteractionServiceImpl implements InteractionService {
     private Post checkPost(Long postId) {
         Post post = postMapper.selectById(postId);
         if (post == null || post.getStatus() != 1) {
-            throw new BaseException("帖子不存在或已被查封");
+            throw new BaseException("帖子不存在或已被隐藏");
         }
         return post;
     }

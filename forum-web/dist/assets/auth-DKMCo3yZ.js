@@ -1,0 +1,1 @@
+import{s as r}from"./_plugin-vue_export-helper-ryd_CKIm.js";function u(t){return r({url:"/auth/login",method:"post",data:t})}function n(t){return r({url:"/auth/register",method:"post",data:t})}function o(){return r({url:"/auth/me",method:"get"})}function s(t){return r({url:"/auth/me",method:"put",data:t})}export{o as g,u as l,n as r,s as u};

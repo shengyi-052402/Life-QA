@@ -1,45 +1,49 @@
 <template>
   <div class="comment-section">
     <h3 class="section-title">评论 <span class="count">{{ post.commentCount }}</span></h3>
-    
-    <!-- 顶部发布框 -->
-    <div class="comment-publish-box mb-30" v-if="userStore.token">
-      <el-avatar :size="40" :src="userStore.userInfo.avatar || 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'" />
+
+    <div v-if="userStore.token" class="comment-publish-box mb-30">
+      <el-avatar :size="40" :src="userStore.userInfo.avatar || defaultAvatar" />
       <div class="publish-input-wrap ml-15">
         <el-input
           v-model="publishContent"
           type="textarea"
           :rows="3"
-          placeholder="发一条友善的评论吧..."
+          placeholder="发一条友善的评论..."
           resize="none"
           maxlength="1000"
           show-word-limit
         />
         <div class="publish-action mt-10">
-          <el-button type="primary" :loading="isPublishing" @click="handlePublish(0, null)">发布评论</el-button>
+          <el-button type="primary" :loading="isPublishing" @click="handlePublish(0, null)">发表评论</el-button>
         </div>
       </div>
     </div>
-    <div class="login-tip mb-30" v-else>
+    <div v-else class="login-tip mb-30">
       <el-button type="primary" plain @click="$router.push('/login')">请先登录后发表评论</el-button>
     </div>
 
-    <!-- 评论列表 -->
-    <div class="comment-list" v-loading="loading">
+    <div v-loading="loading" class="comment-list">
       <template v-if="comments.length > 0">
-        <div class="comment-item" v-for="(comment, index) in comments" :key="comment.id">
-          <el-avatar :size="40" :src="comment.author.avatar || 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'" />
-          
+        <div
+          v-for="comment in comments"
+          :key="comment.id"
+          class="comment-item"
+          :class="{ focused: focusCommentId === comment.id }"
+          :data-comment-id="comment.id"
+        >
+          <el-avatar :size="40" :src="comment.author.avatar || defaultAvatar" />
+
           <div class="comment-main ml-15">
             <div class="comment-user">
               <span class="nickname">{{ comment.author.nickname || comment.author.username }}</span>
             </div>
-            
+
             <div class="comment-content mt-10">{{ comment.content }}</div>
-            
+
             <div class="comment-meta mt-10">
-              <span class="time">{{ formatDate(comment.createdAt) }}</span>
-              <span class="action-btn ml-15" :class="{ 'liked': comment.isLiked }" @click="handleLike(comment)">
+              <span class="time">{{ formatDate(comment.createdAt, true) }}</span>
+              <span class="action-btn ml-15" :class="{ liked: comment.isLiked }" @click="handleLike(comment)">
                 <el-icon><Pointer /></el-icon> <span v-if="comment.likeCount > 0">{{ comment.likeCount }}</span>
               </span>
               <span class="action-btn ml-15" @click="openReplyBox(comment.id, comment.author.id, comment.author.nickname)">
@@ -47,13 +51,12 @@
               </span>
             </div>
 
-            <!-- 顶级评论下的直接回复框 (针对根级) -->
-            <div class="reply-box-inline mt-15" v-if="activeReplyId === comment.id && !replyingToSub">
+            <div v-if="activeReplyId === comment.id && !replyingToSub" class="reply-box-inline mt-15">
               <el-input
                 v-model="replyContent"
                 type="textarea"
                 :rows="2"
-                :placeholder="'回复 @' + replyTargetName + ' :'"
+                :placeholder="'回复 @' + replyTargetName + ':'"
                 resize="none"
               />
               <div class="publish-action mt-10">
@@ -62,23 +65,27 @@
               </div>
             </div>
 
-            <!-- 二级评论预览树 -->
-            <div class="sub-comment-tree mt-15" v-if="comment.replyCount > 0">
-              <!-- 前2条预览 -->
-              <div class="sub-comment-item" v-for="sub in (expandedRootId === comment.id ? comment.allSubReplies : comment.replies)" :key="sub.id">
-                <el-avatar :size="24" :src="sub.author.avatar || 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'" />
+            <div v-if="comment.replyCount > 0" class="sub-comment-tree mt-15">
+              <div
+                v-for="sub in displayedReplies(comment)"
+                :key="sub.id"
+                class="sub-comment-item"
+                :class="{ focused: focusCommentId === sub.id }"
+                :data-comment-id="sub.id"
+              >
+                <el-avatar :size="24" :src="sub.author.avatar || defaultAvatar" />
                 <div class="sub-comment-main ml-10">
                   <div class="sub-comment-content">
                     <span class="nickname">{{ sub.author.nickname || sub.author.username }}</span>
-                    <span class="reply-to-text" v-if="sub.replyToUser && sub.replyToUser.id !== comment.author.id">
+                    <span v-if="sub.replyToUser && sub.replyToUser.id !== comment.author.id" class="reply-to-text">
                       回复 <span class="nickname">@{{ sub.replyToUser.nickname || sub.replyToUser.username }}</span>
                     </span>
                     : {{ sub.content }}
                   </div>
-                  
+
                   <div class="comment-meta mt-5">
-                    <span class="time">{{ formatDate(sub.createdAt) }}</span>
-                    <span class="action-btn ml-10" :class="{ 'liked': sub.isLiked }" @click="handleLike(sub)">
+                    <span class="time">{{ formatDate(sub.createdAt, true) }}</span>
+                    <span class="action-btn ml-10" :class="{ liked: sub.isLiked }" @click="handleLike(sub)">
                       <el-icon><Pointer /></el-icon> <span v-if="sub.likeCount > 0">{{ sub.likeCount }}</span>
                     </span>
                     <span class="action-btn ml-10" @click="openReplyBox(comment.id, sub.author.id, sub.author.nickname, true)">
@@ -86,13 +93,12 @@
                     </span>
                   </div>
 
-                  <!-- 二级评论的盖楼回复框 -->
-                  <div class="reply-box-inline mt-10" v-if="activeReplyId === comment.id && replyingToSub && replyTargetId === sub.author.id">
+                  <div v-if="activeReplyId === comment.id && replyingToSub && replyTargetId === sub.author.id" class="reply-box-inline mt-10">
                     <el-input
                       v-model="replyContent"
                       type="textarea"
                       :rows="2"
-                      :placeholder="'回复 @' + replyTargetName + ' :'"
+                      :placeholder="'回复 @' + replyTargetName + ':'"
                       resize="none"
                     />
                     <div class="publish-action mt-10">
@@ -102,24 +108,21 @@
                   </div>
                 </div>
               </div>
-              
-              <!-- 展开更多 -->
-              <div class="view-more-replies mt-5" v-if="comment.replyCount > 2 && expandedRootId !== comment.id">
-                共 {{ comment.replyCount }} 条回复, <span class="click-text" @click="loadMoreReplies(comment, index)">点击查看</span>
+
+              <div v-if="comment.replyCount > 2 && expandedRootId !== comment.id" class="view-more-replies mt-5">
+                共 {{ comment.replyCount }} 条回复 <span class="click-text" @click="loadMoreReplies(comment, 1)">点击查看</span>
               </div>
-              <div class="view-more-replies mt-5" v-if="expandedRootId === comment.id && comment.subPage < Math.ceil(comment.replyCount / 10)">
-                <span class="click-text" @click="loadMoreReplies(comment, index)">加载下一页...</span>
+              <div v-if="expandedRootId === comment.id && comment.subPage < Math.ceil(comment.replyCount / 10)" class="view-more-replies mt-5">
+                <span class="click-text" @click="loadMoreReplies(comment, comment.subPage + 1)">加载下一页...</span>
               </div>
             </div>
-
           </div>
         </div>
       </template>
-      <el-empty v-else description="暂无评论，快来抢沙发吧~" />
+      <el-empty v-else description="暂无评论，快来抢沙发" />
     </div>
 
-    <!-- 顶级评论分页 -->
-    <div class="pagination-wrap mt-30" v-if="total > 0">
+    <div v-if="total > 0" class="pagination-wrap mt-30">
       <el-pagination
         v-model:current-page="pageParams.page"
         v-model:page-size="pageParams.size"
@@ -132,74 +135,80 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
-import { getCommentPage, createComment, toggleCommentLike } from '@/api/comment'
-import { useUserStore } from '@/stores/user'
+import { nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Pointer, ChatDotRound } from '@element-plus/icons-vue'
+import { ChatDotRound, Pointer } from '@element-plus/icons-vue'
+import { createComment, getCommentPage, toggleCommentLike } from '@/api/comment'
+import { useUserStore } from '@/stores/user'
+import { formatDate } from '@/utils/format'
 
 const props = defineProps({
-  post: {
-    type: Object,
-    required: true
-  }
+  post: { type: Object, required: true },
+  initialPage: { type: Number, default: 1 },
+  focusCommentId: { type: Number, default: null },
+  rootCommentId: { type: Number, default: null },
+  replyPage: { type: Number, default: 1 }
 })
 
 const emit = defineEmits(['comment-added'])
-
 const userStore = useUserStore()
+const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
 
 const loading = ref(false)
 const comments = ref([])
 const total = ref(0)
 const pageParams = reactive({
-  page: 1,
+  page: props.initialPage,
   size: 10,
   postId: props.post.id,
   parentId: 0,
   sort: 'latest'
 })
 
-// 发布顶级评论
 const publishContent = ref('')
 const isPublishing = ref(false)
-
-// 回复内联框状态控制
-const activeReplyId = ref(null) // 当前激活回复框的根级评论ID
-const replyingToSub = ref(false) // 区分是在给根评论回复，还是给二级评论回复
-const replyTargetId = ref(null) // 被@的作者ID
-const replyTargetName = ref('') // 被@的作者昵称
+const activeReplyId = ref(null)
+const replyingToSub = ref(false)
+const replyTargetId = ref(null)
+const replyTargetName = ref('')
 const replyContent = ref('')
+const expandedRootId = ref(null)
 
-// 展开二级评论相关
-const expandedRootId = ref(null) // 当前展开的根评论ID
+watch(
+  () => props.initialPage,
+  (page) => {
+    if (page && pageParams.page !== page) {
+      pageParams.page = page
+      fetchComments()
+    }
+  }
+)
 
-const fetchComments = async () => {
+async function fetchComments() {
   loading.value = true
   try {
     const res = await getCommentPage(pageParams)
-    // 为每个根评论初始化二级分页状态
-    res.data.records.forEach(c => {
-      c.allSubReplies = c.replies ? [...c.replies] : []
-      c.subPage = 1
+    res.data.records.forEach(comment => {
+      comment.allSubReplies = comment.replies ? [...comment.replies] : []
+      comment.subPage = 1
     })
     comments.value = res.data.records
     total.value = res.data.total
-  } catch (err) {
-    console.error(err)
+    await nextTick()
+    await focusTargetComment()
   } finally {
     loading.value = false
   }
 }
 
-const handlePageChange = (page) => {
+function handlePageChange(page) {
   pageParams.page = page
   closeReplyBox()
   expandedRootId.value = null
   fetchComments()
 }
 
-const openReplyBox = (rootCommentId, targetUserId, targetUserName, isSub = false) => {
+function openReplyBox(rootCommentId, targetUserId, targetUserName, isSub = false) {
   if (!userStore.token) {
     ElMessage.warning('请先登录')
     return
@@ -211,12 +220,12 @@ const openReplyBox = (rootCommentId, targetUserId, targetUserName, isSub = false
   replyContent.value = ''
 }
 
-const closeReplyBox = () => {
+function closeReplyBox() {
   activeReplyId.value = null
   replyContent.value = ''
 }
 
-const handlePublish = async (parentId = 0, replyToUserId = null) => {
+async function handlePublish(parentId = 0, replyToUserId = null) {
   const content = parentId === 0 ? publishContent.value : replyContent.value
   if (!content.trim()) {
     ElMessage.warning('评论内容不能为空')
@@ -235,72 +244,67 @@ const handlePublish = async (parentId = 0, replyToUserId = null) => {
     if (parentId === 0) {
       publishContent.value = ''
       pageParams.page = 1
-      fetchComments()
-      emit('comment-added')
     } else {
       closeReplyBox()
-      // 如果是为了保持B站流畅体验，可以单独重新拉取这个根评论的二级数据
-      // 这里简便处理，重新拉取整个列表
-      fetchComments()
-      emit('comment-added')
     }
-  } catch (err) {
-    console.error(err)
+    await fetchComments()
+    emit('comment-added')
   } finally {
     isPublishing.value = false
   }
 }
 
-// 加载更多回复 (针对某一条根评论)
-const loadMoreReplies = async (comment, index) => {
-  if (expandedRootId.value !== comment.id) {
-    // 首次展开，从第1页重新拉取确保顺序
-    expandedRootId.value = comment.id
-    comment.subPage = 1
-    comment.allSubReplies = []
-  } else {
-    // 翻下一页
-    comment.subPage++
-  }
-
-  try {
-    const res = await getCommentPage({
-      page: comment.subPage,
-      size: 10,
-      postId: props.post.id,
-      parentId: comment.id,
-      sort: 'latest' // 二级一般按时间升序更合理，后端现在默认是desc，如果想B站体验需要后端传asc
-    })
-    
-    // 如果是第一页直接覆盖，不是的话追加
-    if (comment.subPage === 1) {
-      comment.allSubReplies = res.data.records
-    } else {
-      comment.allSubReplies.push(...res.data.records)
-    }
-  } catch (err) {
-    console.error(err)
-  }
+function displayedReplies(comment) {
+  return expandedRootId.value === comment.id ? comment.allSubReplies : comment.replies
 }
 
-const handleLike = async (commentOrSub) => {
+async function loadMoreReplies(comment, page = 1) {
+  expandedRootId.value = comment.id
+  comment.subPage = page
+
+  const res = await getCommentPage({
+    page,
+    size: 10,
+    postId: props.post.id,
+    parentId: comment.id,
+    sort: 'latest'
+  })
+
+  comment.allSubReplies = page === 1
+    ? res.data.records
+    : [...comment.allSubReplies, ...res.data.records]
+
+  await nextTick()
+  await focusTargetComment()
+}
+
+async function handleLike(commentOrSub) {
   if (!userStore.token) {
     ElMessage.warning('请先登录')
     return
   }
-  try {
-    const res = await toggleCommentLike(commentOrSub.id)
-    commentOrSub.isLiked = res.data
-    commentOrSub.likeCount += res.data ? 1 : -1
-  } catch (err) {
-    console.error(err)
-  }
+  const res = await toggleCommentLike(commentOrSub.id)
+  commentOrSub.isLiked = res.data
+  commentOrSub.likeCount += res.data ? 1 : -1
 }
 
-const formatDate = (dateStr) => {
-  if (!dateStr) return ''
-  const date = new Date(dateStr)
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+async function focusTargetComment() {
+  if (!props.focusCommentId) return
+
+  let target = document.querySelector(`[data-comment-id="${props.focusCommentId}"]`)
+  if (!target && props.rootCommentId) {
+    const rootComment = comments.value.find(item => item.id === props.rootCommentId)
+    if (rootComment && props.focusCommentId !== props.rootCommentId) {
+      await loadMoreReplies(rootComment, props.replyPage || 1)
+      target = document.querySelector(`[data-comment-id="${props.focusCommentId}"]`)
+    }
+  }
+
+  if (target) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  } else {
+    document.getElementById('comments')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 }
 
 onMounted(() => {
@@ -345,6 +349,12 @@ onMounted(() => {
   margin-bottom: 25px;
   padding-bottom: 20px;
   border-bottom: 1px solid var(--border-color);
+  border-radius: 12px;
+}
+
+.comment-item.focused,
+.sub-comment-item.focused {
+  background: rgba(245, 158, 11, 0.08);
 }
 
 .comment-main {
@@ -378,10 +388,7 @@ onMounted(() => {
   transition: color 0.2s;
 }
 
-.action-btn:hover {
-  color: var(--primary-color);
-}
-
+.action-btn:hover,
 .action-btn.liked {
   color: var(--primary-color);
 }
@@ -395,6 +402,7 @@ onMounted(() => {
 .sub-comment-item {
   display: flex;
   margin-bottom: 15px;
+  border-radius: 10px;
 }
 
 .sub-comment-item:last-child {

@@ -23,6 +23,14 @@ export function deleteComment(id) {
   })
 }
 
+export function getCommentLocation(id, params) {
+  return request({
+    url: `/comments/${id}/location`,
+    method: 'get',
+    params
+  })
+}
+
 // ---- 以下为 interaction.js 也能放这，稍微合并一下 ----
 
 export function togglePostLike(postId) {

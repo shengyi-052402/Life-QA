@@ -6,8 +6,10 @@ import com.forum.common.constant.MessageConstant;
 import com.forum.common.exception.BaseException;
 import com.forum.pojo.dto.CategoryDTO;
 import com.forum.pojo.entity.Category;
+import com.forum.pojo.entity.Post;
 import com.forum.pojo.vo.CategoryVO;
 import com.forum.server.mapper.CategoryMapper;
+import com.forum.server.mapper.PostMapper;
 import com.forum.server.service.CategoryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
@@ -20,6 +22,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> implements CategoryService {
 
+    private final PostMapper postMapper;
 
     @Override
     public List<CategoryVO> getAllCategories() {
@@ -27,9 +30,10 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
                 .orderByAsc(Category::getSortOrder)
                 .orderByDesc(Category::getCreatedAt));
 
-        return categories.stream().map(c -> {
+        return categories.stream().map(category -> {
             CategoryVO vo = CategoryVO.builder().build();
-            BeanUtils.copyProperties(c, vo);
+            BeanUtils.copyProperties(category, vo);
+            vo.setPostCount(countPostsByCategory(category.getId()));
             return vo;
         }).collect(Collectors.toList());
     }
@@ -40,8 +44,10 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
         if (category == null) {
             throw new BaseException(MessageConstant.CATEGORY_NOT_FOUND);
         }
+
         CategoryVO vo = CategoryVO.builder().build();
         BeanUtils.copyProperties(category, vo);
+        vo.setPostCount(countPostsByCategory(category.getId()));
         return vo;
     }
 
@@ -66,7 +72,6 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
             throw new BaseException(MessageConstant.CATEGORY_NOT_FOUND);
         }
 
-        // 如果名字改了，需要查重
         if (!category.getName().equals(categoryDTO.getName())) {
             long count = count(new LambdaQueryWrapper<Category>()
                     .eq(Category::getName, categoryDTO.getName()));
@@ -85,13 +90,17 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
         if (category == null) {
             throw new BaseException(MessageConstant.CATEGORY_NOT_FOUND);
         }
-        
-        // 实际业务中应该去查询 Post 表是否有该分类下的帖子
-        // 如果有，则抛出 CATEGORY_HAS_POSTS 异常
-        if (category.getPostCount() > 0) {
-             throw new BaseException(MessageConstant.CATEGORY_HAS_POSTS);
+
+        if (countPostsByCategory(id) > 0) {
+            throw new BaseException(MessageConstant.CATEGORY_HAS_POSTS);
         }
 
         removeById(id);
+    }
+
+    private Integer countPostsByCategory(Long categoryId) {
+        return Math.toIntExact(postMapper.selectCount(new LambdaQueryWrapper<Post>()
+                .eq(Post::getCategoryId, categoryId)
+                .eq(Post::getStatus, 1)));
     }
 }

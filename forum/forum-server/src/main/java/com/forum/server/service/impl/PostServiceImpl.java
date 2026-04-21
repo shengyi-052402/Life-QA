@@ -8,21 +8,24 @@ import com.forum.common.context.BaseContext;
 import com.forum.common.exception.BaseException;
 import com.forum.common.exception.ForbiddenException;
 import com.forum.common.result.PageResult;
-import com.forum.common.utils.HtmlUtil;
 import com.forum.pojo.dto.PostCreateDTO;
 import com.forum.pojo.dto.PostPageQueryDTO;
 import com.forum.pojo.dto.PostUpdateDTO;
 import com.forum.pojo.entity.Category;
-import com.forum.pojo.entity.Post;
-import com.forum.pojo.entity.PostTag;
-import com.forum.pojo.entity.PostLike;
+import com.forum.pojo.entity.Comment;
 import com.forum.pojo.entity.Favorite;
+import com.forum.pojo.entity.Post;
+import com.forum.pojo.entity.PostLike;
+import com.forum.pojo.entity.PostTag;
 import com.forum.pojo.entity.Tag;
 import com.forum.pojo.entity.User;
 import com.forum.pojo.vo.PostDetailVO;
 import com.forum.pojo.vo.PostListVO;
 import com.forum.pojo.vo.TagVO;
 import com.forum.pojo.vo.UserVO;
+import com.forum.server.mapper.CommentMapper;
+import com.forum.server.mapper.FavoriteMapper;
+import com.forum.server.mapper.PostLikeMapper;
 import com.forum.server.mapper.PostMapper;
 import com.forum.server.mapper.PostTagMapper;
 import com.forum.server.service.CategoryService;
@@ -37,7 +40,6 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -48,14 +50,15 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
     private final PostTagMapper postTagMapper;
     private final UserService userService;
     private final CategoryService categoryService;
-    private final com.forum.server.mapper.PostLikeMapper postLikeMapper;
-    private final com.forum.server.mapper.FavoriteMapper favoriteMapper;
+    private final PostLikeMapper postLikeMapper;
+    private final FavoriteMapper favoriteMapper;
+    private final CommentMapper commentMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createPost(PostCreateDTO dto) {
         Long userId = BaseContext.getCurrentId();
-        
+
         Post post = Post.builder()
                 .title(dto.getTitle())
                 .content(dto.getContent())
@@ -69,31 +72,25 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
                 .favoriteCount(0)
                 .isTop(0)
                 .isEssence(0)
-                .status(1) // 默认正常
+                .status(1)
                 .build();
-        
+
         save(post);
         Long postId = post.getId();
 
-        // 增加用户发帖数
         User user = userService.getById(userId);
         if (user != null) {
             user.setPostCount((user.getPostCount() == null ? 0 : user.getPostCount()) + 1);
             userService.updateById(user);
         }
 
-        // 处理分类帖子数
         Category category = categoryService.getById(dto.getCategoryId());
         if (category != null) {
             category.setPostCount((category.getPostCount() == null ? 0 : category.getPostCount()) + 1);
             categoryService.updateById(category);
         }
 
-        // 处理标签
         handleTags(postId, dto.getTagIds(), dto.getNewTags());
-
-        // TODO 同步 ES (阶段4)
-        
         return postId;
     }
 
@@ -104,25 +101,24 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         if (post == null) {
             throw new BaseException(MessageConstant.POST_NOT_FOUND);
         }
-        
-        // 鉴权：只有作者或管理员才能修改
+
         Long userId = BaseContext.getCurrentId();
         User currentUser = userService.getById(userId);
         if (!post.getUserId().equals(userId) && currentUser.getRole() != 1) {
             throw new ForbiddenException(MessageConstant.NO_PERMISSION);
         }
 
-        // 分类变化
         if (!post.getCategoryId().equals(dto.getCategoryId())) {
-            Category oldC = categoryService.getById(post.getCategoryId());
-            if (oldC != null) {
-                oldC.setPostCount(Math.max(0, oldC.getPostCount() - 1));
-                categoryService.updateById(oldC);
+            Category oldCategory = categoryService.getById(post.getCategoryId());
+            if (oldCategory != null) {
+                oldCategory.setPostCount(Math.max(0, oldCategory.getPostCount() - 1));
+                categoryService.updateById(oldCategory);
             }
-            Category newC = categoryService.getById(dto.getCategoryId());
-            if (newC != null) {
-                newC.setPostCount(newC.getPostCount() + 1);
-                categoryService.updateById(newC);
+
+            Category newCategory = categoryService.getById(dto.getCategoryId());
+            if (newCategory != null) {
+                newCategory.setPostCount((newCategory.getPostCount() == null ? 0 : newCategory.getPostCount()) + 1);
+                categoryService.updateById(newCategory);
             }
         }
 
@@ -131,14 +127,10 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         post.setSummary(dto.getSummary());
         post.setCoverImage(dto.getCoverImage());
         post.setCategoryId(dto.getCategoryId());
-        
         updateById(post);
 
-        // 删除旧的标签关联重建
         postTagMapper.delete(new LambdaQueryWrapper<PostTag>().eq(PostTag::getPostId, post.getId()));
         handleTags(post.getId(), dto.getTagIds(), dto.getNewTags());
-
-        // TODO 同步 ES (阶段4)
     }
 
     @Override
@@ -148,20 +140,30 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         if (post == null) {
             throw new BaseException(MessageConstant.POST_NOT_FOUND);
         }
-        
+
         Long userId = BaseContext.getCurrentId();
         User currentUser = userService.getById(userId);
         if (!post.getUserId().equals(userId) && currentUser.getRole() != 1) {
             throw new ForbiddenException(MessageConstant.NO_PERMISSION);
         }
 
-        // 扣除用户发帖数、分类发帖数等冗余字段...
-        
-        removeById(id);
-        // 删除关联标签
-        postTagMapper.delete(new LambdaQueryWrapper<PostTag>().eq(PostTag::getPostId, id));
+        User author = userService.getById(post.getUserId());
+        if (author != null) {
+            author.setPostCount(Math.max(0, (author.getPostCount() == null ? 0 : author.getPostCount()) - 1));
+            userService.updateById(author);
+        }
 
-        // TODO 从 ES 中删除 (阶段4)
+        Category category = categoryService.getById(post.getCategoryId());
+        if (category != null) {
+            category.setPostCount(Math.max(0, (category.getPostCount() == null ? 0 : category.getPostCount()) - 1));
+            categoryService.updateById(category);
+        }
+
+        removeById(id);
+        postTagMapper.delete(new LambdaQueryWrapper<PostTag>().eq(PostTag::getPostId, id));
+        postLikeMapper.delete(new LambdaQueryWrapper<PostLike>().eq(PostLike::getPostId, id));
+        favoriteMapper.delete(new LambdaQueryWrapper<Favorite>().eq(Favorite::getPostId, id));
+        commentMapper.delete(new LambdaQueryWrapper<Comment>().eq(Comment::getPostId, id));
     }
 
     @Override
@@ -171,7 +173,6 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
             throw new BaseException(MessageConstant.POST_NOT_FOUND);
         }
 
-        // 异步增加浏览量或直接更新
         baseMapper.incrementViewCount(id);
         post.setViewCount((post.getViewCount() == null ? 0 : post.getViewCount()) + 1);
 
@@ -180,52 +181,48 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         vo.setIsTop(post.getIsTop() == 1);
         vo.setIsEssence(post.getIsEssence() == 1);
 
-        // 作者
         User user = userService.getById(post.getUserId());
         if (user != null) {
             vo.setAuthor(UserVO.builder()
-                .id(user.getId())
-                .nickname(user.getNickname())
-                .avatar(user.getAvatar())
-                .build());
+                    .id(user.getId())
+                    .nickname(user.getNickname())
+                    .avatar(user.getAvatar())
+                    .build());
         }
 
-        // 分类
         Category category = categoryService.getById(post.getCategoryId());
         if (category != null) {
             vo.setCategoryName(category.getName());
         }
 
-        // 标签
         List<PostTag> postTags = postTagMapper.selectList(new LambdaQueryWrapper<PostTag>().eq(PostTag::getPostId, id));
         if (!postTags.isEmpty()) {
             List<Long> tagIds = postTags.stream().map(PostTag::getTagId).collect(Collectors.toList());
             List<Tag> tags = tagService.listByIds(tagIds);
-            List<TagVO> tagVOs = tags.stream().map(t -> {
-                TagVO tvo = TagVO.builder().build();
-                BeanUtils.copyProperties(t, tvo);
-                return tvo;
+            List<TagVO> tagVOs = tags.stream().map(tag -> {
+                TagVO voItem = TagVO.builder().build();
+                BeanUtils.copyProperties(tag, voItem);
+                return voItem;
             }).collect(Collectors.toList());
             vo.setTags(tagVOs);
         } else {
             vo.setTags(new ArrayList<>());
         }
 
-        // 当前用户是否点赞/收藏
         vo.setIsLiked(false);
         vo.setIsFavorited(false);
-        
+
         Long currentUserId = BaseContext.getCurrentId();
         if (currentUserId != null) {
-            long likeCount = postLikeMapper.selectCount(new LambdaQueryWrapper<PostLike>()
+            long liked = postLikeMapper.selectCount(new LambdaQueryWrapper<PostLike>()
                     .eq(PostLike::getPostId, id)
                     .eq(PostLike::getUserId, currentUserId));
-            vo.setIsLiked(likeCount > 0);
-            
-            long favCount = favoriteMapper.selectCount(new LambdaQueryWrapper<Favorite>()
+            vo.setIsLiked(liked > 0);
+
+            long favorited = favoriteMapper.selectCount(new LambdaQueryWrapper<Favorite>()
                     .eq(Favorite::getPostId, id)
                     .eq(Favorite::getUserId, currentUserId));
-            vo.setIsFavorited(favCount > 0);
+            vo.setIsFavorited(favorited > 0);
         }
 
         return vo;
@@ -243,11 +240,10 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
 
         if (StringUtils.hasText(queryDTO.getKeyword())) {
             wrapper.and(wq -> wq.like(Post::getTitle, queryDTO.getKeyword())
-                                .or()
-                                .like(Post::getSummary, queryDTO.getKeyword()));
+                    .or()
+                    .like(Post::getSummary, queryDTO.getKeyword()));
         }
 
-        // 排序规则
         if ("hot".equals(queryDTO.getSort())) {
             wrapper.orderByDesc(Post::getViewCount);
         } else if ("most_liked".equals(queryDTO.getSort())) {
@@ -255,8 +251,6 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         } else if ("most_commented".equals(queryDTO.getSort())) {
             wrapper.orderByDesc(Post::getCommentCount);
         } else {
-            // 默认 latest
-            // 置顶帖优先，再按时间倒序
             wrapper.orderByDesc(Post::getIsTop).orderByDesc(Post::getCreatedAt);
         }
 
@@ -271,10 +265,10 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
             User user = userService.getById(post.getUserId());
             if (user != null) {
                 vo.setAuthor(UserVO.builder()
-                    .id(user.getId())
-                    .nickname(user.getNickname())
-                    .avatar(user.getAvatar())
-                    .build());
+                        .id(user.getId())
+                        .nickname(user.getNickname())
+                        .avatar(user.getAvatar())
+                        .build());
             }
 
             Category category = categoryService.getById(post.getCategoryId());
@@ -288,13 +282,16 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
     }
 
     private void handleTags(Long postId, List<Long> tagIds, List<String> newTags) {
-        if (tagIds == null) tagIds = new ArrayList<>();
-        
-        // 处理新标签
+        if (tagIds == null) {
+            tagIds = new ArrayList<>();
+        }
+
         if (newTags != null && !newTags.isEmpty()) {
             for (String tagName : newTags) {
-                if (!StringUtils.hasText(tagName)) continue;
-                // 查重
+                if (!StringUtils.hasText(tagName)) {
+                    continue;
+                }
+
                 Tag tag = tagService.getOne(new LambdaQueryWrapper<Tag>().eq(Tag::getName, tagName));
                 if (tag == null) {
                     tag = Tag.builder().name(tagName).postCount(0).build();
@@ -304,15 +301,13 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
             }
         }
 
-        // 去重后保存关联并增加使用次数
         tagIds = tagIds.stream().distinct().collect(Collectors.toList());
-        for (Long tid : tagIds) {
-            postTagMapper.insert(PostTag.builder().postId(postId).tagId(tid).build());
-            // 标签热度+1
-            Tag tag = tagService.getById(tid);
-            if(tag != null){
-                 tag.setPostCount(tag.getPostCount() + 1);
-                 tagService.updateById(tag);
+        for (Long tagId : tagIds) {
+            postTagMapper.insert(PostTag.builder().postId(postId).tagId(tagId).build());
+            Tag tag = tagService.getById(tagId);
+            if (tag != null) {
+                tag.setPostCount((tag.getPostCount() == null ? 0 : tag.getPostCount()) + 1);
+                tagService.updateById(tag);
             }
         }
     }

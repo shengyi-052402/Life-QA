@@ -1,0 +1,1 @@
+import{s as e}from"./_plugin-vue_export-helper-ryd_CKIm.js";function a(){return e({url:"/categories",method:"get"})}function g(t){return e({url:"/tags",method:"get",params:t})}function o(t){return e({url:"/tags/hot",method:"get",params:{limit:t}})}export{o as a,g as b,a as g};

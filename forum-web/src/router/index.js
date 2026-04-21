@@ -22,7 +22,7 @@ const routes = [
         path: 'post/create',
         name: 'PostCreate',
         component: () => import('@/views/post/PostCreate.vue'),
-        meta: { title: '发布新帖' }
+        meta: { title: '发布帖子' }
       },
       {
         path: 'post/:id',
@@ -35,6 +35,24 @@ const routes = [
         name: 'Search',
         component: () => import('@/views/Search.vue'),
         meta: { title: '搜索' }
+      },
+      {
+        path: 'user/:id',
+        name: 'UserCenter',
+        component: () => import('@/views/UserCenter.vue'),
+        meta: { title: '个人中心' }
+      },
+      {
+        path: 'settings',
+        name: 'Settings',
+        component: () => import('@/views/Settings.vue'),
+        meta: { title: '账号设置' }
+      },
+      {
+        path: 'notifications',
+        name: 'Notifications',
+        component: () => import('@/views/Notifications.vue'),
+        meta: { title: '通知中心' }
       }
     ]
   },
@@ -57,23 +75,20 @@ const router = createRouter({
   routes
 })
 
-// 全局路由守卫
 router.beforeEach((to, from, next) => {
-  // 设置页面标题
   if (to.meta.title) {
     document.title = `${to.meta.title} - 开发者论坛`
   }
-  
+
   const hasToken = getToken()
-  
-  // 需要鉴权的页面名单
-  const authRoutes = ['/settings', '/post/create']
-  
+  const authRoutes = ['/settings', '/post/create', '/notifications']
+
   if (authRoutes.includes(to.path) && !hasToken) {
     next(`/login?redirect=${to.path}`)
-  } else {
-    next()
+    return
   }
+
+  next()
 })
 
 export default router
