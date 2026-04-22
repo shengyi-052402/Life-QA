@@ -1,1 +1,0 @@
-import{s as e}from"./_plugin-vue_export-helper-ryd_CKIm.js";function s(t){return e({url:"/posts",method:"get",params:t})}function r(t){return e({url:`/posts/${t}`,method:"get"})}function n(t){return e({url:"/posts",method:"post",data:t})}function u(t){return e({url:`/posts/${t}`,method:"delete"})}export{r as a,n as c,u as d,s as g};

@@ -30,3 +30,11 @@ export function updateCurrentUserInfo(data) {
     data
   })
 }
+
+export function updateCurrentUserPassword(data) {
+  return request({
+    url: '/auth/me/password',
+    method: 'put',
+    data
+  })
+}

@@ -1,71 +1,93 @@
 package com.forum.server.service.impl;
 
+import com.aliyun.oss.OSS;
+import com.aliyun.oss.model.ObjectMetadata;
+import com.aliyun.oss.model.PutObjectRequest;
 import com.forum.common.constant.MessageConstant;
 import com.forum.common.exception.BaseException;
+import com.forum.server.config.OssConfig;
 import com.forum.server.service.FileService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.UUID;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class FileServiceImpl implements FileService {
 
-    @Value("${forum.upload.path}")
-    private String uploadPath;
-
-    @Value("${forum.upload.url-prefix}")
-    private String urlPrefix;
+    private final OssConfig ossConfig;
+    private final OSS ossClient;
 
     @Override
     public String uploadFile(MultipartFile file) {
-        if (file.isEmpty()) {
+        validateFile(file);
+        validateOssConfig();
+
+        String suffix = extractSuffix(file.getOriginalFilename());
+        String dateDir = new SimpleDateFormat("yyyyMMdd").format(new Date());
+        String objectKey = "images/" + dateDir + "/" + UUID.randomUUID().toString().replace("-", "") + suffix;
+        return uploadToOss(file, objectKey);
+    }
+
+    private void validateOssConfig() {
+        if (!StringUtils.hasText(ossConfig.getEndpoint())
+                || !StringUtils.hasText(ossConfig.getAccessKeyId())
+                || !StringUtils.hasText(ossConfig.getAccessKeySecret())
+                || !StringUtils.hasText(ossConfig.getBucketName())
+                || !StringUtils.hasText(ossConfig.getDomain())) {
+            throw new BaseException("OSS配置不完整，当前环境已要求统一使用OSS上传");
+        }
+    }
+
+    private String uploadToOss(MultipartFile file, String objectKey) {
+        try (InputStream inputStream = file.getInputStream()) {
+            ObjectMetadata metadata = new ObjectMetadata();
+            metadata.setContentLength(file.getSize());
+            metadata.setContentType(file.getContentType());
+
+            PutObjectRequest putRequest = new PutObjectRequest(
+                    ossConfig.getBucketName(),
+                    objectKey,
+                    inputStream,
+                    metadata
+            );
+            ossClient.putObject(putRequest);
+
+            String url = ossConfig.getDomain().replaceAll("/$", "") + "/" + objectKey;
+            log.info("OSS upload success: {}", url);
+            return url;
+        } catch (IOException e) {
+            log.error("OSS upload failed, objectKey={}", objectKey, e);
             throw new BaseException(MessageConstant.UPLOAD_FAILED);
         }
+    }
 
-        // 文件大小限制 (5MB) - Spring Boot default config may also block before reaching here
+    private void validateFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new BaseException(MessageConstant.UPLOAD_FAILED);
+        }
         if (file.getSize() > 5 * 1024 * 1024) {
             throw new BaseException(MessageConstant.FILE_TOO_LARGE);
         }
-
-        String originalFilename = file.getOriginalFilename();
-        if (originalFilename == null) {
-            throw new BaseException(MessageConstant.UPLOAD_FAILED);
-        }
-
-        // 验证后缀
-        String suffix = originalFilename.substring(originalFilename.lastIndexOf(".")).toLowerCase();
+        String suffix = extractSuffix(file.getOriginalFilename());
         if (!suffix.matches("\\.(jpg|jpeg|png|gif|webp)$")) {
             throw new BaseException(MessageConstant.FILE_TYPE_NOT_ALLOWED);
         }
+    }
 
-        // 按日期建目录：yyyyMMdd
-        String dateDir = new SimpleDateFormat("yyyyMMdd").format(new Date());
-        File dir = new File(uploadPath + dateDir);
-        if (!dir.exists() && !dir.mkdirs()) {
-            log.error("Failed to create directory: {}", dir.getAbsolutePath());
+    private String extractSuffix(String filename) {
+        if (filename == null || !filename.contains(".")) {
             throw new BaseException(MessageConstant.UPLOAD_FAILED);
         }
-
-        // 重命名文件
-        String newFilename = UUID.randomUUID().toString().replace("-", "") + suffix;
-        File dest = new File(dir, newFilename);
-
-        try {
-            file.transferTo(dest);
-        } catch (IOException e) {
-            log.error("File upload error", e);
-            throw new BaseException(MessageConstant.UPLOAD_FAILED);
-        }
-
-        // 返回 URL
-        return urlPrefix + dateDir + "/" + newFilename;
+        return filename.substring(filename.lastIndexOf(".")).toLowerCase();
     }
 }

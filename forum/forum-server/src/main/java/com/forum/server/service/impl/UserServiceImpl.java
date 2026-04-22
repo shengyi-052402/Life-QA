@@ -7,6 +7,7 @@ import com.forum.common.constant.MessageConstant;
 import com.forum.common.context.BaseContext;
 import com.forum.common.exception.BaseException;
 import com.forum.common.result.PageResult;
+import com.forum.pojo.dto.PasswordUpdateDTO;
 import com.forum.pojo.dto.UserRegisterDTO;
 import com.forum.pojo.dto.UserUpdateDTO;
 import com.forum.pojo.entity.Comment;
@@ -96,6 +97,23 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         user.setNickname(dto.getNickname());
         user.setBio(dto.getBio());
         user.setAvatar(dto.getAvatar());
+        updateById(user);
+    }
+
+    @Override
+    public void updatePassword(Long userId, PasswordUpdateDTO dto) {
+        User user = getById(userId);
+        if (user == null) {
+            throw new BaseException(MessageConstant.ACCOUNT_NOT_FOUND);
+        }
+        if (!passwordEncoder.matches(dto.getOldPassword(), user.getPassword())) {
+            throw new BaseException(MessageConstant.PASSWORD_ERROR);
+        }
+        if (passwordEncoder.matches(dto.getNewPassword(), user.getPassword())) {
+            throw new BaseException("新密码不能与旧密码相同");
+        }
+
+        user.setPassword(passwordEncoder.encode(dto.getNewPassword()));
         updateById(user);
     }
 

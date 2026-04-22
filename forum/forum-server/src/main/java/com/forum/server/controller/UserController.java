@@ -1,7 +1,9 @@
 package com.forum.server.controller;
 
+import com.forum.common.constant.MessageConstant;
 import com.forum.common.context.BaseContext;
 import com.forum.common.result.Result;
+import com.forum.pojo.dto.PasswordUpdateDTO;
 import com.forum.pojo.dto.UserUpdateDTO;
 import com.forum.pojo.vo.UserVO;
 import com.forum.server.service.UserService;
@@ -36,6 +38,14 @@ public class UserController {
     public Result<Void> updateCurrentUserInfo(@Valid @RequestBody UserUpdateDTO dto) {
         Long currentId = BaseContext.getCurrentId();
         userService.updateProfile(currentId, dto);
-        return Result.success("资料修改成功", null);
+        return Result.success(MessageConstant.PROFILE_UPDATED, null);
+    }
+
+    @PutMapping("/me/password")
+    @Operation(summary = "修改当前登录用户密码")
+    public Result<Void> updateCurrentUserPassword(@Valid @RequestBody PasswordUpdateDTO dto) {
+        Long currentId = BaseContext.getCurrentId();
+        userService.updatePassword(currentId, dto);
+        return Result.success(MessageConstant.PASSWORD_CHANGED, null);
     }
 }

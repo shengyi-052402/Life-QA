@@ -2,12 +2,14 @@ server:
   port: 8080
 
 spring:
+  profiles:
+    active: dev
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/forum?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&useSSL=false&allowPublicKeyRetrieval=true
     username: root
-    password: newlife24 # 根据本地环境修改
-  
+    password: newlife24
+
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: GMT+8
@@ -30,7 +32,15 @@ forum:
 knife4j:
   enable: true
   openapi:
-    title: 论坛网站 API 文档
-    description: 论坛网站接口测试文档
+    title: 人生Q&A API 文档
+    description: 人生Q&A 论坛接口文档
     email: admin@forum.com
-    version: 1.0
+    version: 2.1
+
+aliyun:
+  oss:
+    endpoint: ${aliyun.oss.endpoint:}
+    access-key-id: ${aliyun.oss.access-key-id:}
+    access-key-secret: ${aliyun.oss.access-key-secret:}
+    bucket-name: ${aliyun.oss.bucket-name:}
+    domain: ${aliyun.oss.domain:}

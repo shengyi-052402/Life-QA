@@ -2,6 +2,7 @@ package com.forum.server.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.forum.common.result.PageResult;
+import com.forum.pojo.dto.PasswordUpdateDTO;
 import com.forum.pojo.dto.UserRegisterDTO;
 import com.forum.pojo.dto.UserUpdateDTO;
 import com.forum.pojo.entity.User;
@@ -18,6 +19,8 @@ public interface UserService extends IService<User> {
     UserVO getUserProfile(Long id);
 
     void updateProfile(Long userId, UserUpdateDTO dto);
+
+    void updatePassword(Long userId, PasswordUpdateDTO dto);
 
     PageResult<PostListVO> getUserPosts(Long userId, Integer page, Integer size);
 

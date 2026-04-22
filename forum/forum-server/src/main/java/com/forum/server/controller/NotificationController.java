@@ -29,8 +29,9 @@ public class NotificationController {
     @Operation(summary = "获取我的通知列表")
     public Result<PageResult<NotificationVO>> getMyNotifications(
             @RequestParam(defaultValue = "1") Integer page,
-            @RequestParam(defaultValue = "10") Integer size) {
-        return Result.success(notificationService.getMyNotifications(page, size));
+            @RequestParam(defaultValue = "10") Integer size,
+            @RequestParam(required = false) String type) {
+        return Result.success(notificationService.getMyNotifications(page, size, type));
     }
 
     @GetMapping("/unread-count")

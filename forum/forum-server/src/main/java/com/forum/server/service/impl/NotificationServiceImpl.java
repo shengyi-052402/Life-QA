@@ -15,6 +15,7 @@ import com.forum.server.service.NotificationService;
 import com.forum.server.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
@@ -74,12 +75,16 @@ public class NotificationServiceImpl extends ServiceImpl<NotificationMapper, Not
     }
 
     @Override
-    public PageResult<NotificationVO> getMyNotifications(Integer page, Integer size) {
+    public PageResult<NotificationVO> getMyNotifications(Integer page, Integer size, String type) {
         Long currentUserId = BaseContext.getCurrentId();
         Page<Notification> pageParam = new Page<>(page, size);
-        page(pageParam, new LambdaQueryWrapper<Notification>()
+        LambdaQueryWrapper<Notification> queryWrapper = new LambdaQueryWrapper<Notification>()
                 .eq(Notification::getReceiverUserId, currentUserId)
-                .orderByDesc(Notification::getCreatedAt));
+                .orderByDesc(Notification::getCreatedAt);
+        if (StringUtils.hasText(type)) {
+            queryWrapper.eq(Notification::getType, type.trim());
+        }
+        page(pageParam, queryWrapper);
 
         List<NotificationVO> records = pageParam.getRecords().stream()
                 .map(this::buildNotificationVO)

@@ -11,7 +11,7 @@ public interface NotificationService extends IService<Notification> {
 
     void publishSystemNotification(String content);
 
-    PageResult<NotificationVO> getMyNotifications(Integer page, Integer size);
+    PageResult<NotificationVO> getMyNotifications(Integer page, Integer size, String type);
 
     Integer getUnreadCount();
 

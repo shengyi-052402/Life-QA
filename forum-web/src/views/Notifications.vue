@@ -31,6 +31,17 @@
         </div>
       </div>
 
+      <div class="filter-tabs">
+        <el-tabs v-model="query.type" @tab-change="handleTypeChange">
+          <el-tab-pane
+            v-for="item in notificationTypeOptions"
+            :key="item.value"
+            :label="item.label"
+            :name="item.value"
+          />
+        </el-tabs>
+      </div>
+
       <div v-loading="loading" class="notification-list">
         <template v-if="notifications.length > 0">
           <div
@@ -90,7 +101,8 @@ const notifications = ref([])
 const total = ref(0)
 const query = reactive({
   page: 1,
-  size: 10
+  size: 10,
+  type: ''
 })
 const publishForm = reactive({
   content: ''
@@ -107,6 +119,16 @@ const notificationTypeMap = {
   system_notice: '系统公告'
 }
 
+const notificationTypeOptions = [
+  { label: '全部', value: '' },
+  { label: '帖子评论', value: 'post_comment' },
+  { label: '评论回复', value: 'comment_reply' },
+  { label: '帖子点赞', value: 'post_like' },
+  { label: '评论点赞', value: 'comment_like' },
+  { label: '帖子收藏', value: 'post_favorite' },
+  { label: '系统公告', value: 'system_notice' }
+]
+
 async function fetchNotifications() {
   loading.value = true
   try {
@@ -116,6 +138,11 @@ async function fetchNotifications() {
   } finally {
     loading.value = false
   }
+}
+
+function handleTypeChange() {
+  query.page = 1
+  fetchNotifications()
 }
 
 async function handleOpen(item) {
@@ -240,6 +267,14 @@ onMounted(async () => {
   display: flex;
   justify-content: flex-end;
   margin-top: 12px;
+}
+
+.filter-tabs {
+  margin-bottom: 8px;
+}
+
+.filter-tabs :deep(.el-tabs__header) {
+  margin-bottom: 0;
 }
 
 .notification-item {
