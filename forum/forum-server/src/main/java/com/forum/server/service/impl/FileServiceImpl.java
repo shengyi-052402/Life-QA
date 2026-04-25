@@ -44,7 +44,7 @@ public class FileServiceImpl implements FileService {
                 || !StringUtils.hasText(ossConfig.getAccessKeySecret())
                 || !StringUtils.hasText(ossConfig.getBucketName())
                 || !StringUtils.hasText(ossConfig.getDomain())) {
-            throw new BaseException("OSS配置不完整，当前环境已要求统一使用OSS上传");
+            throw new BaseException("OSS配置不完整，当前环境要求使用OSS上传");
         }
     }
 

@@ -31,7 +31,7 @@
 - npm：`11.12.1`
 - MySQL：`8.0.45`
 - Maven：`3.6+`
-- 图片上传目录：`D:/ShengYi/QA/uploads/`
+- 图片存储：统一使用 OSS 对象存储
 
 ## 数据库说明
 - 基准 SQL：`forum/sql/init.sql`

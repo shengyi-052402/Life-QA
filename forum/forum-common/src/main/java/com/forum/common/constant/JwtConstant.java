@@ -6,8 +6,6 @@ package com.forum.common.constant;
 public class JwtConstant {
 
     /** JWT 密钥 (生产环境应从配置文件读取) */
-    public static final String SECRET_KEY = "forum-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256";
-
     /** Token 有效期 (毫秒) - 默认24小时 */
     public static final long EXPIRATION = 24 * 60 * 60 * 1000L;
 

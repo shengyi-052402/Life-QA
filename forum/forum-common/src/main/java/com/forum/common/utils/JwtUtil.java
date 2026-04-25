@@ -15,8 +15,25 @@ import java.util.Map;
  */
 public class JwtUtil {
 
+    private static volatile String secretKey;
+    private static volatile long expiration = JwtConstant.EXPIRATION;
+
+    public static void configure(String secret, long expirationMillis) {
+        if (secret == null || secret.trim().length() < 32) {
+            throw new IllegalArgumentException("JWT secret must be at least 32 characters");
+        }
+        if (expirationMillis <= 0) {
+            throw new IllegalArgumentException("JWT expiration must be greater than 0");
+        }
+        secretKey = secret.trim();
+        expiration = expirationMillis;
+    }
+
     private static SecretKey getSigningKey() {
-        return Keys.hmacShaKeyFor(JwtConstant.SECRET_KEY.getBytes(StandardCharsets.UTF_8));
+        if (secretKey == null) {
+            throw new IllegalStateException("JWT secret is not configured");
+        }
+        return Keys.hmacShaKeyFor(secretKey.getBytes(StandardCharsets.UTF_8));
     }
 
     /**
@@ -29,7 +46,7 @@ public class JwtUtil {
         return Jwts.builder()
                 .claims(claims)
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + JwtConstant.EXPIRATION))
+                .expiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(getSigningKey())
                 .compact();
     }
