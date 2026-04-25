@@ -15,6 +15,13 @@ export function getPostDetail(id) {
   })
 }
 
+export function getPostEditDetail(id) {
+  return request({
+    url: `/posts/${id}/edit`,
+    method: 'get'
+  })
+}
+
 export function createPost(data) {
   return request({
     url: '/posts',
@@ -35,5 +42,11 @@ export function deletePost(id) {
   return request({
     url: `/posts/${id}`,
     method: 'delete'
+  })
+}
+export function getGlobePosts() {
+  return request({
+    url: '/posts/globe',
+    method: 'get'
   })
 }

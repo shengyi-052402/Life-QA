@@ -8,7 +8,17 @@
               <el-tab-pane label="最新发布" name="latest" />
               <el-tab-pane label="最热浏览" name="hot" />
               <el-tab-pane label="点赞最多" name="most_liked" />
+              <el-tab-pane label="最多评论" name="most_commented" />
             </el-tabs>
+          </div>
+
+          <div v-if="activeTagName || activeCategoryName" class="active-filters">
+            <el-tag v-if="activeCategoryName" closable @close="handleCategoryChange(null)">
+              分类：{{ activeCategoryName }}
+            </el-tag>
+            <el-tag v-if="activeTagName" type="warning" closable @close="handleTagChange(null)">
+              标签：#{{ activeTagName }}
+            </el-tag>
           </div>
 
           <div v-loading="loading" class="post-list">
@@ -97,7 +107,7 @@
               v-for="tag in hotTags"
               :key="tag.id"
               class="mr-2 mb-2 cursor-pointer"
-              @click="handleTagChange(tag.id)"
+              @click="handleTagChange(tag.id, tag.name)"
             >
               #{{ tag.name }}
             </el-tag>
@@ -109,7 +119,8 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { getCategories } from '@/api/category'
 import { getPostPage } from '@/api/post'
 import { getHotTags } from '@/api/tag'
@@ -117,12 +128,16 @@ import { formatDate } from '@/utils/format'
 import { ChatDotRound, Pointer, View } from '@element-plus/icons-vue'
 
 const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
+const route = useRoute()
+const router = useRouter()
 
 const loading = ref(false)
 const postList = ref([])
 const total = ref(0)
 const categories = ref([])
 const hotTags = ref([])
+const syncingRoute = ref(false)
+const selectedTagName = ref('')
 
 const queryParams = reactive({
   page: 1,
@@ -132,6 +147,38 @@ const queryParams = reactive({
   tagId: null,
   keyword: ''
 })
+
+const activeCategoryName = computed(() => {
+  return categories.value.find(item => item.id === queryParams.categoryId)?.name || ''
+})
+
+const activeTagName = computed(() => {
+  return selectedTagName.value
+})
+
+function syncQueryToRoute() {
+  syncingRoute.value = true
+  router.replace({
+    path: '/explore',
+    query: {
+      sort: queryParams.sort !== 'latest' ? queryParams.sort : undefined,
+      categoryId: queryParams.categoryId ?? undefined,
+      tagId: queryParams.tagId ?? undefined,
+      tagName: queryParams.tagId ? selectedTagName.value || undefined : undefined,
+      page: queryParams.page > 1 ? queryParams.page : undefined
+    }
+  })
+}
+
+function applyRouteQuery() {
+  queryParams.sort = route.query.sort || 'latest'
+  queryParams.categoryId = route.query.categoryId ? Number(route.query.categoryId) : null
+  queryParams.tagId = route.query.tagId ? Number(route.query.tagId) : null
+  queryParams.page = route.query.page ? Number(route.query.page) : 1
+  selectedTagName.value = queryParams.tagId
+    ? route.query.tagName || hotTags.value.find(item => item.id === queryParams.tagId)?.name || ''
+    : ''
+}
 
 async function fetchPosts() {
   loading.value = true
@@ -152,11 +199,12 @@ async function fetchCategories() {
 async function fetchHotTags() {
   const res = await getHotTags(10)
   hotTags.value = res.data
+  applyRouteQuery()
 }
 
 function handleFilter() {
   queryParams.page = 1
-  fetchPosts()
+  syncQueryToRoute()
 }
 
 function handleCategoryChange(id) {
@@ -164,21 +212,34 @@ function handleCategoryChange(id) {
   handleFilter()
 }
 
-function handleTagChange(id) {
+function handleTagChange(id, name = '') {
   queryParams.tagId = id
+  selectedTagName.value = id ? name || hotTags.value.find(item => item.id === id)?.name || '' : ''
   handleFilter()
 }
 
 function handlePageChange(page) {
   queryParams.page = page
-  fetchPosts()
+  syncQueryToRoute()
 }
 
 onMounted(() => {
+  applyRouteQuery()
   fetchCategories()
   fetchHotTags()
   fetchPosts()
 })
+
+watch(
+  () => route.query,
+  () => {
+    applyRouteQuery()
+    if (syncingRoute.value) {
+      syncingRoute.value = false
+    }
+    fetchPosts()
+  }
+)
 </script>
 
 <style scoped>
@@ -196,6 +257,12 @@ onMounted(() => {
 .filter-header {
   border-bottom: 1px solid var(--border-color);
   margin-bottom: 20px;
+}
+
+.active-filters {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
 }
 
 :deep(.el-tabs__nav-wrap::after) {

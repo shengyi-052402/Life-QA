@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.util.List;
 
 /** 编辑帖子 DTO */
@@ -23,4 +24,13 @@ public class PostUpdateDTO implements Serializable {
     private Long categoryId;
     private List<Long> tagIds;
     private List<String> newTags;
+
+    /** 发帖地区名称（可选，如"北京"、"Tokyo"） */
+    private String locationName;
+
+    /** 纬度（可选） */
+    private BigDecimal latitude;
+
+    /** 经度（可选） */
+    private BigDecimal longitude;
 }

@@ -3,6 +3,7 @@ package com.forum.pojo.vo;
 import lombok.Builder;
 import lombok.Data;
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -27,6 +28,12 @@ public class PostDetailVO implements Serializable {
     private Boolean isEssence;
     private Boolean isLiked;
     private Boolean isFavorited;
+    /** 发帖地区名称 */
+    private String locationName;
+    /** 纬度 */
+    private BigDecimal latitude;
+    /** 经度 */
+    private BigDecimal longitude;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

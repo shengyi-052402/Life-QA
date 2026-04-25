@@ -22,7 +22,13 @@ const routes = [
         path: 'post/create',
         name: 'PostCreate',
         component: () => import('@/views/post/PostCreate.vue'),
-        meta: { title: '发布帖子' }
+        meta: { title: '发布帖子', requiresAuth: true }
+      },
+      {
+        path: 'post/edit/:id',
+        name: 'PostEdit',
+        component: () => import('@/views/post/PostEdit.vue'),
+        meta: { title: '编辑帖子', requiresAuth: true }
       },
       {
         path: 'post/:id',
@@ -46,13 +52,13 @@ const routes = [
         path: 'settings',
         name: 'Settings',
         component: () => import('@/views/Settings.vue'),
-        meta: { title: '账号设置' }
+        meta: { title: '账号设置', requiresAuth: true }
       },
       {
         path: 'notifications',
         name: 'Notifications',
         component: () => import('@/views/Notifications.vue'),
-        meta: { title: '通知中心' }
+        meta: { title: '通知中心', requiresAuth: true }
       }
     ]
   },
@@ -81,10 +87,10 @@ router.beforeEach((to, from, next) => {
   }
 
   const hasToken = getToken()
-  const authRoutes = ['/settings', '/post/create', '/notifications']
+  const requiresAuth = to.matched.some(record => record.meta?.requiresAuth)
 
-  if (authRoutes.includes(to.path) && !hasToken) {
-    next(`/login?redirect=${to.path}`)
+  if (requiresAuth && !hasToken) {
+    next(`/login?redirect=${to.fullPath}`)
     return
   }
 

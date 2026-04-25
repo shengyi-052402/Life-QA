@@ -1,8 +1,8 @@
 <template>
   <div class="post-create-container">
-    <div class="glass-panel main-editor-box">
-      <h2 class="page-title">发布新帖</h2>
-      
+    <div class="glass-panel main-editor-box" v-loading="pageLoading">
+      <h2 class="page-title">编辑帖子</h2>
+
       <el-form :model="postForm" :rules="rules" ref="postFormRef" label-position="top">
         <el-form-item prop="title" label="标题">
           <el-input v-model="postForm.title" placeholder="请输入帖子标题 (简明扼要)" size="large" maxlength="200" show-word-limit />
@@ -33,7 +33,7 @@
             show-word-limit
           />
         </el-form-item>
-        
+
         <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item prop="categoryId" label="分类">
@@ -59,7 +59,6 @@
                 placeholder="请选择或输入新标签并回车添加"
                 size="large"
                 class="w-full"
-                @change="handleTagChange"
               >
                 <el-option
                   v-for="tag in allTags"
@@ -73,7 +72,7 @@
           <el-col :span="8">
             <el-form-item label="📍 发帖地区 (可选，将在地球上显示)">
               <el-select
-                v-model="postForm.locationName"
+                v-model="citySelection"
                 filterable
                 remote
                 clearable
@@ -86,7 +85,7 @@
               >
                 <el-option
                   v-for="city in cityOptions"
-                  :key="city.name"
+                  :key="`${city.name}-${city.lng}-${city.lat}`"
                   :label="`${city.nameZh}（${city.name}）`"
                   :value="city"
                 />
@@ -97,7 +96,7 @@
             </el-form-item>
           </el-col>
         </el-row>
-        
+
         <el-form-item prop="content" label="正文">
           <div class="editor-container">
             <Toolbar
@@ -112,14 +111,13 @@
               :defaultConfig="editorConfig"
               :mode="mode"
               @onCreated="handleCreated"
-              @onChange="handleChange"
             />
           </div>
         </el-form-item>
-        
+
         <div class="form-actions mt-20">
           <el-button @click="$router.back()">取 消</el-button>
-          <el-button type="primary" :loading="loading" @click="submitPost">发 布</el-button>
+          <el-button type="primary" :loading="loading" @click="submitPost">保 存</el-button>
         </div>
       </el-form>
     </div>
@@ -128,28 +126,29 @@
 
 <script setup>
 import '@wangeditor/editor/dist/css/style.css'
-import { onBeforeUnmount, ref, reactive, shallowRef, onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref, shallowRef } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
-import { useRouter } from 'vue-router'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getCategories } from '@/api/category'
 import { getTags } from '@/api/tag'
-import { createPost } from '@/api/post'
+import { getPostEditDetail, updatePost } from '@/api/post'
 import { useUserStore } from '@/stores/user'
 import { searchCities } from '@/data/cities'
 
+const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 
-// 表单相关
+const postId = route.params.id
 const postFormRef = ref(null)
 const loading = ref(false)
+const pageLoading = ref(true)
 const categories = ref([])
 const allTags = ref([])
-
-// 城市搜索
 const cityOptions = ref([])
+const citySelection = ref(null)
 
 const postForm = reactive({
   title: '',
@@ -157,9 +156,8 @@ const postForm = reactive({
   summary: '',
   categoryId: null,
   tagIds: [],
-  newTags: [],
   content: '',
-  locationName: null,   // 存城市对象，用于显示
+  locationName: null,
   latitude: null,
   longitude: null
 })
@@ -188,7 +186,7 @@ const uploadHeaders = {
   Authorization: `Bearer ${userStore.token}`
 }
 
-const handleCoverSuccess = (res, file) => {
+const handleCoverSuccess = (res) => {
   if (res.code === 200) {
     postForm.coverImage = res.data.url
     ElMessage.success('背景图上传成功')
@@ -210,34 +208,28 @@ const beforeCoverUpload = (file) => {
   return isImage && isLt5M
 }
 
-// 城市搜索远程方法
 const onCitySearch = (query) => {
   cityOptions.value = searchCities(query)
 }
 
-// 选择城市后填充经纬度
 const onCitySelect = (city) => {
   if (city && typeof city === 'object') {
     postForm.latitude = city.lat
     postForm.longitude = city.lng
     postForm.locationName = city.nameZh
   } else {
-    // 清空
     postForm.latitude = null
     postForm.longitude = null
     postForm.locationName = null
   }
 }
 
-// 富文本编辑器相关
 const mode = 'default'
 const editorRef = shallowRef()
 const toolbarConfig = {
-  excludeKeys: [
-    'fullScreen', 'video'
-  ]
+  excludeKeys: ['fullScreen', 'video']
 }
-const editorConfig = { 
+const editorConfig = {
   placeholder: '请输入内容...',
   MENU_CONF: {
     uploadImage: {
@@ -262,83 +254,108 @@ const handleCreated = (editor) => {
   editorRef.value = editor
 }
 
-const handleChange = (editor) => {
-  // editor onChange 触发校验或者什么逻辑
-}
-
 onBeforeUnmount(() => {
   const editor = editorRef.value
   if (editor == null) return
   editor.destroy()
 })
 
-const handleTagChange = (val) => {
-  // val 可能是 tagId(Long) 或者是 newly created tag name(String)
+function fillCitySelection(post) {
+  if (!post.locationName || post.latitude == null || post.longitude == null) {
+    citySelection.value = null
+    cityOptions.value = []
+    return
+  }
+
+  const matchedCity = searchCities(post.locationName).find(city => city.nameZh === post.locationName || city.name === post.locationName)
+  const city = matchedCity || {
+    name: post.locationName,
+    nameZh: post.locationName,
+    lat: post.latitude,
+    lng: post.longitude
+  }
+  citySelection.value = city
+  cityOptions.value = [city]
 }
 
-const fetchData = async () => {
+async function fetchData() {
+  pageLoading.value = true
   try {
-    const [catRes, tagRes] = await Promise.all([
+    const [catRes, tagRes, postRes] = await Promise.all([
       getCategories(),
-      getTags({ page: 1, size: 500 })
+      getTags({ page: 1, size: 500 }),
+      getPostEditDetail(postId)
     ])
+
     categories.value = catRes.data
     allTags.value = tagRes.data
-  } catch (error) {
-    console.error(error)
+
+    const post = postRes.data
+    postForm.title = post.title
+    postForm.coverImage = post.coverImage
+    postForm.summary = post.summary
+    postForm.categoryId = post.categoryId
+    postForm.tagIds = (post.tags || []).map(tag => tag.id)
+    postForm.content = post.content
+    postForm.locationName = post.locationName
+    postForm.latitude = post.latitude
+    postForm.longitude = post.longitude
+    fillCitySelection(post)
+  } finally {
+    pageLoading.value = false
   }
+}
+
+function buildSubmitData() {
+  const finalTagIds = []
+  const finalNewTags = []
+
+  postForm.tagIds.forEach(item => {
+    if (typeof item === 'number') {
+      finalTagIds.push(item)
+    } else {
+      finalNewTags.push(item)
+    }
+  })
+
+  return {
+    title: postForm.title,
+    coverImage: postForm.coverImage,
+    summary: postForm.summary,
+    categoryId: postForm.categoryId,
+    content: postForm.content,
+    tagIds: finalTagIds,
+    newTags: finalNewTags,
+    locationName: postForm.locationName || null,
+    latitude: postForm.latitude ?? null,
+    longitude: postForm.longitude ?? null
+  }
+}
+
+function submitPost() {
+  postFormRef.value.validate(async (valid) => {
+    if (!valid) {
+      return
+    }
+    if (postForm.content.trim() === '' || postForm.content === '<p><br></p>') {
+      ElMessage.warning('内容不能为空')
+      return
+    }
+
+    loading.value = true
+    try {
+      await updatePost(postId, buildSubmitData())
+      ElMessage.success('修改成功')
+      router.push(`/post/${postId}`)
+    } finally {
+      loading.value = false
+    }
+  })
 }
 
 onMounted(() => {
   fetchData()
 })
-
-const submitPost = () => {
-  postFormRef.value.validate(async (valid) => {
-    if (valid) {
-      if (postForm.content.trim() === '' || postForm.content === '<p><br></p>') {
-        ElMessage.warning('内容不能为空')
-        return
-      }
-
-      loading.value = true
-      const finalTagIds = []
-      const finalNewTags = []
-      
-      postForm.tagIds.forEach(item => {
-        if (typeof item === 'number') {
-          finalTagIds.push(item)
-        } else {
-          finalNewTags.push(item)
-        }
-      })
-
-      const submitData = {
-        title: postForm.title,
-        coverImage: postForm.coverImage,
-        summary: postForm.summary,
-        categoryId: postForm.categoryId,
-        content: postForm.content,
-        tagIds: finalTagIds,
-        newTags: finalNewTags,
-        // 地理位置（可选）
-        locationName: postForm.locationName || null,
-        latitude: postForm.latitude ?? null,
-        longitude: postForm.longitude ?? null
-      }
-
-      try {
-        const res = await createPost(submitData)
-        ElMessage.success('发布成功')
-        router.push(`/post/${res.data}`)
-      } catch (error) {
-        console.error(error)
-      } finally {
-        loading.value = false
-      }
-    }
-  })
-}
 </script>
 
 <style scoped>
@@ -366,7 +383,7 @@ const submitPost = () => {
 .editor-container {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  z-index: 10; 
+  z-index: 10;
   width: 100%;
 }
 
@@ -412,5 +429,9 @@ const submitPost = () => {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.mt-20 {
+  margin-top: 20px;
 }
 </style>

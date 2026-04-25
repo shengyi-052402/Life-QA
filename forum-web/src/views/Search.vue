@@ -9,9 +9,20 @@
       <template v-if="postList.length > 0">
         <div v-for="post in postList" :key="post.id" class="post-item" @click="$router.push(`/post/${post.id}`)">
           <div class="post-content-wrap">
-            <!-- 采用原生 Vue 配合前端渲染进行高亮展示伪效果 -->
-            <h3 class="post-title" v-html="highlight(post.title)"></h3>
-            <p class="post-summary" v-html="highlight(post.summary)"></p>
+            <h3 class="post-title" v-html="post.titleHighlight || post.title"></h3>
+            <p class="post-summary" v-html="post.summaryHighlight || post.summary"></p>
+
+            <div v-if="post.tags?.length" class="tag-list mt-10">
+              <el-tag
+                v-for="tag in post.tags"
+                :key="tag.id"
+                size="small"
+                type="info"
+                effect="plain"
+              >
+                #{{ tag.name }}
+              </el-tag>
+            </div>
             
             <div class="post-meta mt-10">
               <span class="author-name">@{{ post.author.nickname || post.author.username }}</span>
@@ -39,13 +50,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { getPostPage } from '@/api/post'
 import { formatDate } from '@/utils/format'
 
 const route = useRoute()
-const router = useRouter()
 
 const queryKeyword = ref('')
 const loading = ref(false)
@@ -70,16 +80,6 @@ const fetchSearchResults = async () => {
   } finally {
     loading.value = false
   }
-}
-
-// 模拟前端高亮替换函数
-const highlight = (text) => {
-  if (!text) return ''
-  if (!queryKeyword.value) return text
-  
-  // 忽略大小写进行全局替换，添加CSS高亮样式
-  const regex = new RegExp(`(${queryKeyword.value})`, 'gi')
-  return text.replace(regex, '<span class="keyword-highlight">$1</span>')
 }
 
 const handlePageChange = (page) => {
@@ -159,6 +159,12 @@ watch(
   align-items: center;
 }
 
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .divider {
   margin: 0 8px;
 }
@@ -176,10 +182,10 @@ watch(
   margin-top: 10px;
 }
 
-/* 高亮样式（因为 v-html 渲染，需使用 :deep() 或直接设置非 scoped 样式，这里我们在全局或用 :deep 可以生效，使用 :deep） */
-:deep(.keyword-highlight) {
+:deep(em) {
   color: #f56c6c;
-  font-weight: bold;
+  font-style: normal;
+  font-weight: 700;
   background-color: rgba(245, 108, 108, 0.1);
   padding: 0 2px;
   border-radius: 2px;

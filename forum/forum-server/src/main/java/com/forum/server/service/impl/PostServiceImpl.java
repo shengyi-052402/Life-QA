@@ -8,6 +8,7 @@ import com.forum.common.context.BaseContext;
 import com.forum.common.exception.BaseException;
 import com.forum.common.exception.ForbiddenException;
 import com.forum.common.result.PageResult;
+import com.forum.common.utils.HtmlUtil;
 import com.forum.pojo.dto.PostCreateDTO;
 import com.forum.pojo.dto.PostPageQueryDTO;
 import com.forum.pojo.dto.PostUpdateDTO;
@@ -20,6 +21,7 @@ import com.forum.pojo.entity.PostTag;
 import com.forum.pojo.entity.Tag;
 import com.forum.pojo.entity.User;
 import com.forum.pojo.vo.PostDetailVO;
+import com.forum.pojo.vo.PostGlobeVO;
 import com.forum.pojo.vo.PostListVO;
 import com.forum.pojo.vo.TagVO;
 import com.forum.pojo.vo.UserVO;
@@ -39,12 +41,16 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements PostService {
+    private static final String HIGHLIGHT_PRE_TAG = "<em>";
+    private static final String HIGHLIGHT_POST_TAG = "</em>";
 
     private final TagService tagService;
     private final PostTagMapper postTagMapper;
@@ -66,6 +72,9 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
                 .coverImage(dto.getCoverImage())
                 .userId(userId)
                 .categoryId(dto.getCategoryId())
+                .locationName(dto.getLocationName())
+                .latitude(dto.getLatitude())
+                .longitude(dto.getLongitude())
                 .viewCount(0)
                 .likeCount(0)
                 .commentCount(0)
@@ -102,11 +111,8 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
             throw new BaseException(MessageConstant.POST_NOT_FOUND);
         }
 
-        Long userId = BaseContext.getCurrentId();
-        User currentUser = userService.getById(userId);
-        if (!post.getUserId().equals(userId) && currentUser.getRole() != 1) {
-            throw new ForbiddenException(MessageConstant.NO_PERMISSION);
-        }
+        assertCanManagePost(post);
+        List<Long> oldTagIds = getTagIdsByPostId(post.getId());
 
         if (!post.getCategoryId().equals(dto.getCategoryId())) {
             Category oldCategory = categoryService.getById(post.getCategoryId());
@@ -127,9 +133,13 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         post.setSummary(dto.getSummary());
         post.setCoverImage(dto.getCoverImage());
         post.setCategoryId(dto.getCategoryId());
+        post.setLocationName(dto.getLocationName());
+        post.setLatitude(dto.getLatitude());
+        post.setLongitude(dto.getLongitude());
         updateById(post);
 
         postTagMapper.delete(new LambdaQueryWrapper<PostTag>().eq(PostTag::getPostId, post.getId()));
+        decrementTagCounts(oldTagIds);
         handleTags(post.getId(), dto.getTagIds(), dto.getNewTags());
     }
 
@@ -141,11 +151,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
             throw new BaseException(MessageConstant.POST_NOT_FOUND);
         }
 
-        Long userId = BaseContext.getCurrentId();
-        User currentUser = userService.getById(userId);
-        if (!post.getUserId().equals(userId) && currentUser.getRole() != 1) {
-            throw new ForbiddenException(MessageConstant.NO_PERMISSION);
-        }
+        assertCanManagePost(post);
 
         User author = userService.getById(post.getUserId());
         if (author != null) {
@@ -159,8 +165,10 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
             categoryService.updateById(category);
         }
 
+        List<Long> tagIds = getTagIdsByPostId(id);
         removeById(id);
         postTagMapper.delete(new LambdaQueryWrapper<PostTag>().eq(PostTag::getPostId, id));
+        decrementTagCounts(tagIds);
         postLikeMapper.delete(new LambdaQueryWrapper<PostLike>().eq(PostLike::getPostId, id));
         favoriteMapper.delete(new LambdaQueryWrapper<Favorite>().eq(Favorite::getPostId, id));
         commentMapper.delete(new LambdaQueryWrapper<Comment>().eq(Comment::getPostId, id));
@@ -175,39 +183,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
 
         baseMapper.incrementViewCount(id);
         post.setViewCount((post.getViewCount() == null ? 0 : post.getViewCount()) + 1);
-
-        PostDetailVO vo = PostDetailVO.builder().build();
-        BeanUtils.copyProperties(post, vo);
-        vo.setIsTop(post.getIsTop() == 1);
-        vo.setIsEssence(post.getIsEssence() == 1);
-
-        User user = userService.getById(post.getUserId());
-        if (user != null) {
-            vo.setAuthor(UserVO.builder()
-                    .id(user.getId())
-                    .nickname(user.getNickname())
-                    .avatar(user.getAvatar())
-                    .build());
-        }
-
-        Category category = categoryService.getById(post.getCategoryId());
-        if (category != null) {
-            vo.setCategoryName(category.getName());
-        }
-
-        List<PostTag> postTags = postTagMapper.selectList(new LambdaQueryWrapper<PostTag>().eq(PostTag::getPostId, id));
-        if (!postTags.isEmpty()) {
-            List<Long> tagIds = postTags.stream().map(PostTag::getTagId).collect(Collectors.toList());
-            List<Tag> tags = tagService.listByIds(tagIds);
-            List<TagVO> tagVOs = tags.stream().map(tag -> {
-                TagVO voItem = TagVO.builder().build();
-                BeanUtils.copyProperties(tag, voItem);
-                return voItem;
-            }).collect(Collectors.toList());
-            vo.setTags(tagVOs);
-        } else {
-            vo.setTags(new ArrayList<>());
-        }
+        PostDetailVO vo = buildPostDetailVO(post);
 
         vo.setIsLiked(false);
         vo.setIsFavorited(false);
@@ -229,6 +205,17 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
     }
 
     @Override
+    public PostDetailVO getPostEditDetail(Long id) {
+        Post post = getById(id);
+        if (post == null || post.getStatus() != 1) {
+            throw new BaseException(MessageConstant.POST_NOT_FOUND);
+        }
+
+        assertCanManagePost(post);
+        return buildPostDetailVO(post);
+    }
+
+    @Override
     public PageResult<PostListVO> getPostPage(PostPageQueryDTO queryDTO) {
         Page<Post> pageParam = new Page<>(queryDTO.getPage(), queryDTO.getSize());
         LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<>();
@@ -238,18 +225,51 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
             wrapper.eq(Post::getCategoryId, queryDTO.getCategoryId());
         }
 
+        if (queryDTO.getTagId() != null) {
+            List<Long> postIds = postTagMapper.selectList(new LambdaQueryWrapper<PostTag>()
+                            .eq(PostTag::getTagId, queryDTO.getTagId()))
+                    .stream()
+                    .map(PostTag::getPostId)
+                    .distinct()
+                    .collect(Collectors.toList());
+            if (postIds.isEmpty()) {
+                return new PageResult<>(0L, Collections.emptyList());
+            }
+            wrapper.in(Post::getId, postIds);
+        }
+
         if (StringUtils.hasText(queryDTO.getKeyword())) {
-            wrapper.and(wq -> wq.like(Post::getTitle, queryDTO.getKeyword())
-                    .or()
-                    .like(Post::getSummary, queryDTO.getKeyword()));
+            List<Long> matchedTagIds = tagService.list(new LambdaQueryWrapper<Tag>()
+                            .like(Tag::getName, queryDTO.getKeyword()))
+                    .stream()
+                    .map(Tag::getId)
+                    .collect(Collectors.toList());
+            List<Long> postIdsByTag = matchedTagIds.isEmpty()
+                    ? Collections.emptyList()
+                    : postTagMapper.selectList(new LambdaQueryWrapper<PostTag>().in(PostTag::getTagId, matchedTagIds))
+                    .stream()
+                    .map(PostTag::getPostId)
+                    .distinct()
+                    .collect(Collectors.toList());
+
+            wrapper.and(wq -> {
+                wq.like(Post::getTitle, queryDTO.getKeyword())
+                        .or()
+                        .like(Post::getSummary, queryDTO.getKeyword())
+                        .or()
+                        .like(Post::getContent, queryDTO.getKeyword());
+                if (!postIdsByTag.isEmpty()) {
+                    wq.or().in(Post::getId, postIdsByTag);
+                }
+            });
         }
 
         if ("hot".equals(queryDTO.getSort())) {
-            wrapper.orderByDesc(Post::getViewCount);
+            wrapper.orderByDesc(Post::getIsTop).orderByDesc(Post::getViewCount);
         } else if ("most_liked".equals(queryDTO.getSort())) {
-            wrapper.orderByDesc(Post::getLikeCount);
+            wrapper.orderByDesc(Post::getIsTop).orderByDesc(Post::getLikeCount);
         } else if ("most_commented".equals(queryDTO.getSort())) {
-            wrapper.orderByDesc(Post::getCommentCount);
+            wrapper.orderByDesc(Post::getIsTop).orderByDesc(Post::getCommentCount);
         } else {
             wrapper.orderByDesc(Post::getIsTop).orderByDesc(Post::getCreatedAt);
         }
@@ -261,6 +281,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
             BeanUtils.copyProperties(post, vo);
             vo.setIsTop(post.getIsTop() == 1);
             vo.setIsEssence(post.getIsEssence() == 1);
+            vo.setTags(getTagVOsByPostId(post.getId()));
 
             User user = userService.getById(post.getUserId());
             if (user != null) {
@@ -275,10 +296,43 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
             if (category != null) {
                 vo.setCategoryName(category.getName());
             }
+
+            if (StringUtils.hasText(queryDTO.getKeyword())) {
+                vo.setTitleHighlight(highlightText(post.getTitle(), queryDTO.getKeyword()));
+                vo.setSummaryHighlight(buildSummaryHighlight(post, queryDTO.getKeyword(), vo.getTags()));
+            }
             return vo;
         }).collect(Collectors.toList());
 
         return new PageResult<>(pageParam.getTotal(), records);
+    }
+
+    @Override
+    public List<PostGlobeVO> getGlobePosts() {
+        // 只查询有地理位置信息的帖子，最多返回 500 条
+        Page<Post> page = new Page<>(1, 500);
+        LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<Post>()
+                .eq(Post::getStatus, 1)
+                .isNotNull(Post::getLatitude)
+                .isNotNull(Post::getLongitude)
+                .orderByDesc(Post::getCreatedAt);
+
+        page(page, wrapper);
+
+        return page.getRecords().stream().map(post -> {
+            User author = userService.getById(post.getUserId());
+            return PostGlobeVO.builder()
+                    .id(post.getId())
+                    .title(post.getTitle())
+                    .coverImage(post.getCoverImage())
+                    .locationName(post.getLocationName())
+                    .latitude(post.getLatitude())
+                    .longitude(post.getLongitude())
+                    .likeCount(post.getLikeCount())
+                    .authorNickname(author != null ? (author.getNickname() != null ? author.getNickname() : author.getUsername()) : "匿名")
+                    .authorAvatar(author != null ? author.getAvatar() : null)
+                    .build();
+        }).collect(Collectors.toList());
     }
 
     private void handleTags(Long postId, List<Long> tagIds, List<String> newTags) {
@@ -310,5 +364,131 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
                 tagService.updateById(tag);
             }
         }
+    }
+
+    private void assertCanManagePost(Post post) {
+        Long userId = BaseContext.getCurrentId();
+        if (userId == null) {
+            throw new ForbiddenException(MessageConstant.NO_PERMISSION);
+        }
+
+        User currentUser = userService.getById(userId);
+        if (currentUser == null || (!post.getUserId().equals(userId) && currentUser.getRole() != 1)) {
+            throw new ForbiddenException(MessageConstant.NO_PERMISSION);
+        }
+    }
+
+    private PostDetailVO buildPostDetailVO(Post post) {
+        PostDetailVO vo = PostDetailVO.builder().build();
+        BeanUtils.copyProperties(post, vo);
+        vo.setIsTop(post.getIsTop() == 1);
+        vo.setIsEssence(post.getIsEssence() == 1);
+        vo.setTags(getTagVOsByPostId(post.getId()));
+
+        User user = userService.getById(post.getUserId());
+        if (user != null) {
+            vo.setAuthor(UserVO.builder()
+                    .id(user.getId())
+                    .nickname(user.getNickname())
+                    .avatar(user.getAvatar())
+                    .bio(user.getBio())
+                    .postCount(user.getPostCount())
+                    .build());
+        }
+
+        Category category = categoryService.getById(post.getCategoryId());
+        if (category != null) {
+            vo.setCategoryName(category.getName());
+        }
+        return vo;
+    }
+
+    private List<Long> getTagIdsByPostId(Long postId) {
+        return postTagMapper.selectList(new LambdaQueryWrapper<PostTag>().eq(PostTag::getPostId, postId))
+                .stream()
+                .map(PostTag::getTagId)
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    private List<TagVO> getTagVOsByPostId(Long postId) {
+        List<Long> tagIds = getTagIdsByPostId(postId);
+        if (tagIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        return tagService.listByIds(tagIds).stream().map(tag -> {
+            TagVO vo = TagVO.builder().build();
+            BeanUtils.copyProperties(tag, vo);
+            return vo;
+        }).collect(Collectors.toList());
+    }
+
+    private void decrementTagCounts(List<Long> tagIds) {
+        for (Long tagId : tagIds) {
+            Tag tag = tagService.getById(tagId);
+            if (tag != null) {
+                tag.setPostCount(Math.max(0, (tag.getPostCount() == null ? 0 : tag.getPostCount()) - 1));
+                tagService.updateById(tag);
+            }
+        }
+    }
+
+    private String highlightText(String text, String keyword) {
+        if (!StringUtils.hasText(text) || !StringUtils.hasText(keyword)) {
+            return text;
+        }
+
+        return Pattern.compile("(?i)" + Pattern.quote(keyword))
+                .matcher(text)
+                .replaceAll(matchResult -> HIGHLIGHT_PRE_TAG + matchResult.group() + HIGHLIGHT_POST_TAG);
+    }
+
+    private String buildSummaryHighlight(Post post, String keyword, List<TagVO> tags) {
+        String summary = StringUtils.hasText(post.getSummary()) ? post.getSummary() : HtmlUtil.getSummary(post.getContent(), 160);
+        if (StringUtils.hasText(summary) && summary.toLowerCase().contains(keyword.toLowerCase())) {
+            return highlightText(summary, keyword);
+        }
+
+        String plainContent = HtmlUtil.removeHtmlTags(post.getContent());
+        String excerpt = extractExcerpt(plainContent, keyword);
+        if (StringUtils.hasText(excerpt)) {
+            return highlightText(excerpt, keyword);
+        }
+
+        String matchedTags = tags.stream()
+                .map(TagVO::getName)
+                .filter(StringUtils::hasText)
+                .filter(name -> name.toLowerCase().contains(keyword.toLowerCase()))
+                .collect(Collectors.joining(" / "));
+        if (StringUtils.hasText(matchedTags)) {
+            return "匹配标签：" + highlightText(matchedTags, keyword);
+        }
+
+        return highlightText(summary, keyword);
+    }
+
+    private String extractExcerpt(String text, String keyword) {
+        if (!StringUtils.hasText(text) || !StringUtils.hasText(keyword)) {
+            return null;
+        }
+
+        String lowerText = text.toLowerCase();
+        String lowerKeyword = keyword.toLowerCase();
+        int index = lowerText.indexOf(lowerKeyword);
+        if (index < 0) {
+            return null;
+        }
+
+        int start = Math.max(0, index - 40);
+        int end = Math.min(text.length(), index + keyword.length() + 80);
+        String excerpt = text.substring(start, end).trim();
+        if (start > 0) {
+            excerpt = "..." + excerpt;
+        }
+        if (end < text.length()) {
+            excerpt = excerpt + "...";
+        }
+        return excerpt;
     }
 }

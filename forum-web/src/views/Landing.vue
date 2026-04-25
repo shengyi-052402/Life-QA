@@ -1,7 +1,7 @@
 <template>
-  <div class="landing-container" @mousemove="onMouseMove" @wheel="onWheel" @touchstart="onTouchStart" @touchmove="onTouchMove">
-    <header class="landing-header">
-      <div class="logo">unveil.</div>
+  <div class="landing-container" ref="containerRef" @mousemove="onMouseMove" @wheel.prevent="onWheel" @touchstart="onTouchStart" @touchmove.prevent="onTouchMove">
+    <header class="landing-header" :class="{ 'is-globe': globeOpacity > 0.5 }">
+      <div class="logo">Life Q&A</div>
       <div class="actions">
         <template v-if="userStore.token">
           <el-button color="#fff" style="color: #000" round @click="$router.push('/explore')">进入论坛</el-button>
@@ -18,14 +18,20 @@
 
     <div v-if="loading" class="loading-state">
       <div class="loader"></div>
-      <div class="loading-text">LOADING 3D SCENE...</div>
+      <div class="loading-text">加载时空隧道...</div>
     </div>
 
     <!-- 视角容器 -->
-    <main class="viewport" v-else>
-      <!-- 带有视差旋转的 3D 场景 -->
-      <div class="scene" :style="{ transform: `translate(-50%, -50%) rotateX(${sceneRotateX}deg) rotateY(${sceneRotateY}deg)` }">
-        
+    <main class="viewport" v-show="!loading">
+      <!-- 带有视差旋转的 3D 卡片场景 (Z-Axis Scroll) -->
+      <div 
+        class="scene" 
+        :style="{ 
+          transform: `translate(-50%, -50%) rotateX(${sceneRotateX}deg) rotateY(${sceneRotateY}deg)`,
+          opacity: sceneOpacity,
+          pointerEvents: scenePointerEvents
+        }"
+      >
         <div 
           v-for="(post, index) in posts" 
           :key="post.id"
@@ -35,10 +41,8 @@
           @mouseenter="hoveredIndex = index"
           @mouseleave="hoveredIndex = null"
         >
-          <!-- 卡片的 3D 层 -->
           <div class="card-inner" :class="{ 'is-hovered': hoveredIndex === index }">
             <img :src="post.coverImage || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop'" alt="Cover" class="cover-img" />
-            
             <div class="card-info">
               <h2 class="title">{{ post.title }}</h2>
               <p class="summary">{{ post.summary }}</p>
@@ -49,14 +53,55 @@
             </div>
           </div>
         </div>
+      </div>
 
+      <!-- 终章：3D 互动地球 (Globe.gl) -->
+      <div 
+        class="globe-wrapper" 
+        :style="{ 
+          opacity: globeOpacity, 
+          pointerEvents: globePointerEvents,
+          transform: `scale(${globeScale})`
+        }"
+      >
+        <div ref="globeContainer" class="globe-container"></div>
+        
+        <!-- 地球的文字覆盖层 -->
+        <div class="globe-overlay" :class="{ 'is-visible': globeOpacity > 0.8 }">
+          <h2>全人类的疑问<br/>都在这里</h2>
+          <p>拖拽、缩放，探索来自世界各地的思考</p>
+          <el-button color="#fff" style="color: #000; margin-top: 20px;" round size="large" @click="$router.push('/explore')">
+            立即探索
+          </el-button>
+        </div>
+
+        <!-- 鼠标悬停预览卡（跟随光标） -->
+        <Transition name="popup">
+          <div
+            v-if="hoveredGlobePost"
+            class="post-hover-card"
+            :style="{ top: hoverCardPos.y + 'px', left: hoverCardPos.x + 'px' }"
+            @click="navigateToPost(hoveredGlobePost)"
+          >
+            <img
+              :src="hoveredGlobePost.coverImage || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=400'"
+              class="hover-card-cover"
+            />
+            <div class="hover-card-body">
+              <div class="hover-card-location">📍 {{ hoveredGlobePost.locationName }}</div>
+              <div class="hover-card-title">{{ hoveredGlobePost.title }}</div>
+              <div class="hover-card-author">@{{ hoveredGlobePost.authorNickname }}</div>
+              <div class="hover-card-hint">点击查看全文 →</div>
+            </div>
+          </div>
+        </Transition>
       </div>
     </main>
     
     <!-- 底部滚动指示器 -->
-    <div class="scroll-indicator" v-if="!loading && posts.length > 0">
+    <div class="scroll-indicator" v-if="!loading && posts.length > 0" :style="{ opacity: sceneOpacity }">
       <div class="progress-bar">
-        <div class="progress-fill" :style="{ width: `${(targetScroll / maxScroll * 100) || 0}%` }"></div>
+        <div class="progress-fill" :style="{ width: `${Math.min(100, (targetScroll / (maxScroll - SCROLL_THRESHOLD_FOR_GLOBE)) * 100) || 0}%` }"></div>
       </div>
       <div>Scroll to explore</div>
     </div>
@@ -64,21 +109,25 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick, shallowRef, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { getPostPage } from '@/api/post'
+import { getPostPage, getGlobePosts } from '@/api/post'
 import { ElMessage } from 'element-plus'
+import Globe from 'globe.gl'
 
 const router = useRouter()
 const userStore = useUserStore()
 
+const containerRef = ref(null)
 const posts = ref([])
 const loading = ref(true)
 
-// 3D 逻辑相关的状态
+// 3D 卡片场景状态
 const cardRefs = ref([])
 const hoveredIndex = ref(null)
+const sceneOpacity = ref(1)
+const scenePointerEvents = ref('auto')
 
 // 视差变量
 const mouseX = ref(0)
@@ -86,10 +135,22 @@ const mouseY = ref(0)
 const sceneRotateX = ref(0)
 const sceneRotateY = ref(0)
 
+// 3D 地球状态
+const globeContainer = ref(null)
+const globeInstance = shallowRef(null)
+const globeOpacity = ref(0)
+const globePointerEvents = ref('none')
+const globeScale = ref(0.8)
+
+// 帖子悬停预览卡
+const hoveredGlobePost = ref(null)
+const hoverCardPos = reactive({ x: 0, y: 0 })
+
 // 滚动条变量
 let targetScroll = 0
 let currentScroll = 0
 let maxScroll = 1000
+const SCROLL_THRESHOLD_FOR_GLOBE = 2000
 
 // 动画句柄
 let rafId = null
@@ -99,13 +160,14 @@ const fetchPosts = async () => {
   try {
     const res = await getPostPage({ page: 1, size: 20, sort: 'latest' })
     posts.value = res.data.records
-    // 根据卡片数量设定最大滚动距离
-    maxScroll = Math.max(100, (posts.value.length - 1) * 800)
+    const cardDepth = Math.max(100, (posts.value.length - 1) * 800)
+    maxScroll = cardDepth + SCROLL_THRESHOLD_FOR_GLOBE
   } catch (error) {
     console.error('Failed to fetch posts:', error)
   } finally {
     loading.value = false
     nextTick(() => {
+      initGlobe()
       startRenderLoop()
     })
   }
@@ -122,6 +184,9 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (rafId) cancelAnimationFrame(rafId)
   window.removeEventListener('resize', onResize)
+  if (globeInstance.value) {
+    try { globeInstance.value._destructor() } catch(e) {}
+  }
 })
 
 const handlePostClick = (postId) => {
@@ -133,53 +198,143 @@ const handlePostClick = (postId) => {
   }
 }
 
-// 线性插值计算 (Lerp)，用于丝滑动画
-const lerp = (start, end, factor) => {
-  return start + (end - start) * factor
+// 地球光点点击跳转（需登录）
+const navigateToPost = (postData) => {
+  if (!postData) return
+  if (!userStore.token) {
+    ElMessage.warning('请先登录再查看帖子')
+    router.push('/login')
+  } else {
+    router.push(`/post/${postData.id}`)
+  }
 }
 
-// 阻尼更新循环
-const startRenderLoop = () => {
-  // 更新视差旋转
-  sceneRotateX.value = lerp(sceneRotateX.value, -mouseY.value * 7, 0.05) // Y负数表示抬头
-  sceneRotateY.value = lerp(sceneRotateY.value, mouseX.value * 10, 0.05)
+// 初始化 3D 地球
+const initGlobe = async () => {
+  if (!globeContainer.value) return
 
-  // 更新滚动进度
+  // 拉取真实帖子的地理数据
+  let globePostsData = []
+  try {
+    const res = await getGlobePosts()
+    globePostsData = res.data || []
+  } catch(e) {
+    console.warn('Globe posts fetch failed, globe will have no real data points')
+  }
+
+  // 构建光点数据
+  const pointsData = globePostsData.map(p => ({
+    lat: parseFloat(p.latitude),
+    lng: parseFloat(p.longitude),
+    size: 0.5 + Math.min(2, (p.likeCount || 0) / 10) * 0.5,
+    color: '#60A5FA',
+    postData: p
+  }))
+
+  // 如果没有真实数据，放几个演示光点
+  if (pointsData.length === 0) {
+    pointsData.push(
+      { lat: 39.9, lng: 116.4, size: 0.8, color: '#60A5FA', postData: null },
+      { lat: 35.6, lng: 139.6, size: 0.7, color: '#60A5FA', postData: null },
+      { lat: 51.5, lng: -0.1, size: 0.6, color: '#60A5FA', postData: null },
+      { lat: 40.7, lng: -74.0, size: 0.9, color: '#F59E0B', postData: null },
+      { lat: -33.8, lng: 151.2, size: 0.5, color: '#60A5FA', postData: null },
+    )
+  }
+
+  const myGlobe = Globe()(globeContainer.value)
+    .globeImageUrl('//unpkg.com/three-globe/example/img/earth-dark.jpg')
+    .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
+    .backgroundImageUrl('//unpkg.com/three-globe/example/img/night-sky.png')
+    .pointsData(pointsData)
+    .pointLat('lat')
+    .pointLng('lng')
+    .pointColor('color')
+    .pointRadius('size')
+    .pointAltitude(0.01)
+    .pointLabel(() => '') // 禁用内置 label，用自定义 hover 卡
+    .onPointHover((point, prevPoint) => {
+      const controls = myGlobe.controls()
+      if (point && point.postData) {
+        hoveredGlobePost.value = point.postData
+        controls.autoRotateSpeed = 0 // 悬停光点时停止转动
+        // 游标位置由全局 mousemove 更新
+      } else {
+        hoveredGlobePost.value = null
+        controls.autoRotateSpeed = 0.4 // 移开时光点恢复转动
+      }
+    })
+    .onPointClick((point) => {
+      if (point && point.postData) {
+        navigateToPost(point.postData)
+      }
+    })
+
+  myGlobe.pointOfView({ lat: 25, lng: 110, altitude: 2 })
+  const controls = myGlobe.controls()
+  controls.enableZoom = true
+  controls.autoRotate = true
+  controls.autoRotateSpeed = 0.4
+  controls.minDistance = 150
+  controls.maxDistance = 600
+
+  globeInstance.value = myGlobe
+  
+  setTimeout(onResize, 100)
+}
+
+const lerp = (start, end, factor) => start + (end - start) * factor
+
+const startRenderLoop = () => {
+  sceneRotateX.value = lerp(sceneRotateX.value, -mouseY.value * 7, 0.05)
+  sceneRotateY.value = lerp(sceneRotateY.value, mouseX.value * 10, 0.05)
   currentScroll = lerp(currentScroll, targetScroll, 0.08)
 
-  // 核心 3D 引擎：更新每张卡片的空间位置
+  const cardsEndScroll = maxScroll - SCROLL_THRESHOLD_FOR_GLOBE
+
+  if (currentScroll > cardsEndScroll) {
+    const progress = Math.min(1, (currentScroll - cardsEndScroll) / 1000)
+    
+    sceneOpacity.value = Math.max(0, 1 - progress * 2)
+    scenePointerEvents.value = sceneOpacity.value < 0.1 ? 'none' : 'auto'
+    
+    globeOpacity.value = progress
+    globePointerEvents.value = globeOpacity.value > 0.5 ? 'auto' : 'none'
+    globeScale.value = 0.8 + (progress * 0.2)
+    
+    if (containerRef.value) {
+      containerRef.value.style.backgroundColor = `hsl(0,0%,${Math.max(0, 2 - progress * 2)}%)`
+    }
+  } else {
+    sceneOpacity.value = 1
+    scenePointerEvents.value = 'auto'
+    globeOpacity.value = 0
+    globePointerEvents.value = 'none'
+    globeScale.value = 0.8
+    if (containerRef.value) {
+      containerRef.value.style.backgroundColor = '#030303'
+    }
+  }
+
   cardRefs.value.forEach((card, index) => {
     if (!card) return
-    
-    // 我们将卡片沿 Z轴深渊排列，每一张卡片距离间隔为 800px
     const cardZBase = -(index * 800)
-    // 基础偏移加上当前滚动产生的推进
     let currentZ = cardZBase + currentScroll
-
-    // x, y 的轻微打散，产生空间的错落感 (可以通过 index 进行交错)
     const offsetX = (index % 2 === 0 ? 1 : -1) * 350 + (index % 3) * 50
     const offsetY = (index % 2 === 0 ? -1 : 1) * 150
 
     let opacity = 1
-    // 如果卡片跑到相机后面（z > 500）则淡出
-    if (currentZ > 400) {
-      opacity = Math.max(0, 1 - (currentZ - 400) / 200)
-    }
-    // 如果卡片在非常远的深渊，也微调透明度和亮度
-    if (currentZ < -3000) {
-      opacity = Math.max(0, 1 - Math.abs(currentZ + 3000) / 4000)
-    }
+    if (currentZ > 400) opacity = Math.max(0, 1 - (currentZ - 400) / 200)
+    if (currentZ < -3000) opacity = Math.max(0, 1 - Math.abs(currentZ + 3000) / 4000)
 
-    // 通过 CSS Transform 应用真实的 3D 渲染
     card.style.transform = `translate3d(${offsetX}px, ${offsetY}px, ${currentZ}px) rotateY(${index % 2===0 ? -10 : 10}deg)`
     card.style.opacity = opacity
 
-    // 当图片来到面前且最清晰时添加聚焦样式(可以提升 z-index 等)
-    if (currentZ > -200 && currentZ < 200) {
+    if (currentZ > -200 && currentZ < 200 && scenePointerEvents.value === 'auto') {
       card.style.pointerEvents = 'auto'
       card.style.filter = 'brightness(1.1) drop-shadow(0 20px 40px rgba(0,0,0,0.8))'
     } else {
-      card.style.pointerEvents = 'none' // 远处的阻断防误触
+      card.style.pointerEvents = 'none'
       card.style.filter = 'brightness(0.3)'
     }
   })
@@ -187,41 +342,41 @@ const startRenderLoop = () => {
   rafId = requestAnimationFrame(startRenderLoop)
 }
 
-// 鼠标追踪
 const onMouseMove = (e) => {
-  // 计算归一化的鼠标位置 (-1 到 1)
   mouseX.value = (e.clientX / window.innerWidth) * 2 - 1
   mouseY.value = (e.clientY / window.innerHeight) * 2 - 1
+  // 悬停卡跟随光标（偏移避免遮住光点）
+  hoverCardPos.x = e.clientX + 20
+  hoverCardPos.y = e.clientY - 80
 }
 
-// 滚轮控制向前进
 const onWheel = (e) => {
-  // 放大滚动感受度
+  // 如果地球已经出现且指针在地球上，让 globe.gl 自己处理缩放
+  if (globeOpacity.value > 0.8) return
   targetScroll += e.deltaY * 1.5 
-  // 限制滚动范围
-  targetScroll = Math.max(0, Math.min(targetScroll, maxScroll + 800))
+  targetScroll = Math.max(0, Math.min(targetScroll, maxScroll))
 }
 
-// 移动端支持
 let touchStartY = 0
-const onTouchStart = (e) => {
-  touchStartY = e.touches[0].clientY
-}
+const onTouchStart = (e) => { touchStartY = e.touches[0].clientY }
 const onTouchMove = (e) => {
   const currentY = e.touches[0].clientY
   const delta = touchStartY - currentY
   targetScroll += delta * 3
-  targetScroll = Math.max(0, Math.min(targetScroll, maxScroll + 800))
+  targetScroll = Math.max(0, Math.min(targetScroll, maxScroll))
   touchStartY = currentY
 }
 
 const onResize = () => {
-  // 处理尺寸变更时重置
+  if (globeInstance.value && globeContainer.value) {
+    globeInstance.value.width(window.innerWidth).height(window.innerHeight)
+  }
 }
 </script>
 
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;900&display=swap');
 
 .landing-container {
   height: 100vh;
@@ -229,9 +384,8 @@ const onResize = () => {
   background-color: #030303;
   color: #fff;
   font-family: 'Space Grotesk', sans-serif;
-  overflow: hidden; /* 关闭外层滚动，使用监听器控制 */
+  overflow: hidden;
   position: relative;
-  /* 非常暗淡的高级网格背景 */
   background-image: 
     linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
@@ -247,15 +401,15 @@ const onResize = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  z-index: 1000;
+  z-index: 2000;
   pointer-events: auto;
+  transition: all 0.5s ease;
 }
 
 .logo {
   font-size: 2.2rem;
   font-weight: 700;
-  letter-spacing: -1.5px;
-  text-transform: uppercase;
+  letter-spacing: -1px;
 }
 
 .actions {
@@ -271,10 +425,7 @@ const onResize = () => {
   text-transform: uppercase;
   letter-spacing: 1px;
 }
-
-.login-btn:hover {
-  color: #fff;
-}
+.login-btn:hover { color: #fff; }
 
 .user-profile {
   cursor: pointer;
@@ -287,14 +438,13 @@ const onResize = () => {
   border-color: #fff;
 }
 
-/* ================== 重头戏 3D 透视引擎 ================== */
+/* ================== Z 轴透视引擎 ================== */
 .viewport {
   position: absolute;
-  top: 0;
-  left: 0;
+  top: 0; left: 0;
   width: 100vw;
   height: 100vh;
-  perspective: 1000px; /* 控制镜头远近畸变 */
+  perspective: 1000px;
   overflow: hidden;
 }
 
@@ -304,23 +454,19 @@ const onResize = () => {
   left: 50%;
   width: 100%;
   height: 100%;
-  /* 保留深渊效果 */
   transform-style: preserve-3d; 
-  /* 允许稍微偏移出视角一点点 */
-  pointer-events: none;
+  transition: opacity 0.5s ease;
 }
 
 .card-wrapper {
   position: absolute;
-  /* 使元素以自身核心为锚点 */
   top: 50%;
   left: 50%;
-  margin-top: -250px; /* 高度的一半 */
-  margin-left: -180px; /* 宽度的一半 */
+  margin-top: -250px;
+  margin-left: -180px;
   width: 360px;
   height: 500px;
   cursor: pointer;
-  /* 启用 GPU 加速 */
   will-change: transform, opacity, filter;
   transition: filter 0.3s;
 }
@@ -348,17 +494,14 @@ const onResize = () => {
   opacity: 0.6;
   transition: opacity 0.4s, transform 0.6s;
 }
-
 .card-wrapper:hover .cover-img {
   opacity: 0.3;
-  transform: scale(1.1); /* 图片轻微深陷放大 */
+  transform: scale(1.1);
 }
 
-/* 隐藏在下方或需要 hover 才展示的详细信息 */
 .card-info {
   position: absolute;
-  bottom: 0;
-  left: 0;
+  bottom: 0; left: 0;
   width: 100%;
   padding: 30px;
   background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%);
@@ -368,17 +511,15 @@ const onResize = () => {
   display: flex;
   flex-direction: column;
 }
-
-.card-wrapper:hover .card-info {
-  transform: translateY(0);
-}
+.card-wrapper:hover .card-info { transform: translateY(0); }
 
 .title {
+  font-family: 'Noto Serif SC', serif;
   font-size: 1.6rem;
-  font-weight: 700;
-  line-height: 1.1;
+  font-weight: 900;
+  line-height: 1.2;
   margin-bottom: 10px;
-  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .summary {
@@ -387,12 +528,9 @@ const onResize = () => {
   margin-bottom: 20px;
   line-height: 1.5;
   opacity: 0;
-  transition: opacity 0.3s 0.1s; /* 延迟出现 */
+  transition: opacity 0.3s 0.1s;
 }
-
-.card-wrapper:hover .summary {
-  opacity: 1;
-}
+.card-wrapper:hover .summary { opacity: 1; }
 
 .author-meta {
   display: flex;
@@ -413,12 +551,131 @@ const onResize = () => {
   transform: translateX(-10px);
   transition: all 0.3s 0.2s;
 }
-
 .card-wrapper:hover .view-btn {
   opacity: 1;
   transform: translateX(0);
 }
 
+/* ================== 3D 地球引擎 ================== */
+.globe-wrapper {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 100;
+  transition: opacity 1.5s ease, transform 1.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.globe-container {
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+.globe-container:active { cursor: grabbing; }
+
+.globe-overlay {
+  position: absolute;
+  top: 50%;
+  left: 8%;
+  max-width: 420px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-40%);
+  transition: opacity 1s 0.5s ease, transform 1s 0.5s ease;
+}
+.globe-overlay.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-50%);
+}
+.globe-overlay h2 {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 3.5rem;
+  line-height: 1.1;
+  font-weight: 900;
+  margin-bottom: 20px;
+  text-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+.globe-overlay p {
+  font-size: 1.1rem;
+  color: #aaa;
+  letter-spacing: 1px;
+}
+
+/* 帖子悬停预览卡（跟随鼠标，点击跳转） */
+.post-hover-card {
+  position: fixed;
+  width: 260px;
+  background: rgba(10, 10, 16, 0.96);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 14px;
+  overflow: hidden;
+  z-index: 600;
+  backdrop-filter: blur(24px);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.9), 0 0 0 1px rgba(96,165,250,0.15);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: box-shadow 0.2s;
+}
+.post-hover-card:hover {
+  box-shadow: 0 24px 70px rgba(0,0,0,0.95), 0 0 0 2px rgba(96,165,250,0.5);
+}
+
+.hover-card-cover {
+  width: 100%;
+  height: 130px;
+  object-fit: cover;
+  opacity: 0.75;
+  display: block;
+  transition: opacity 0.3s;
+}
+.post-hover-card:hover .hover-card-cover { opacity: 1; }
+
+.hover-card-body {
+  padding: 12px 14px 14px;
+}
+
+.hover-card-location {
+  font-size: 0.7rem;
+  color: #60A5FA;
+  letter-spacing: 1px;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+}
+
+.hover-card-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.35;
+  margin-bottom: 5px;
+  color: #fff;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.hover-card-author {
+  font-size: 0.72rem;
+  color: #666;
+  margin-bottom: 10px;
+}
+
+.hover-card-hint {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #60A5FA;
+  letter-spacing: 0.5px;
+}
+
+/* Popup 动画 */
+.popup-enter-active, .popup-leave-active {
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.popup-enter-from, .popup-leave-to {
+  opacity: 0;
+  transform: scale(0.92) translateY(6px);
+}
 
 /* Scroll Indicator */
 .scroll-indicator {
@@ -436,6 +693,7 @@ const onResize = () => {
   text-transform: uppercase;
   z-index: 100;
   pointer-events: none;
+  transition: opacity 0.5s ease;
 }
 
 .progress-bar {
@@ -449,7 +707,7 @@ const onResize = () => {
 .progress-fill {
   height: 100%;
   background: #fff;
-  transition: width 0.1s; /* 只做轻微缓动，Lerp已经在控制了 */
+  transition: width 0.1s;
 }
 
 .loading-state {

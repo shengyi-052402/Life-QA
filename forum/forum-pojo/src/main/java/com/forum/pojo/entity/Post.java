@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -33,6 +34,15 @@ public class Post implements Serializable {
     private Long userId;
 
     private Long categoryId;
+
+    /** 发帖地区名称（城市/地区） */
+    private String locationName;
+
+    /** 纬度 (-90 to 90) */
+    private BigDecimal latitude;
+
+    /** 经度 (-180 to 180) */
+    private BigDecimal longitude;
 
     private Integer viewCount;
 

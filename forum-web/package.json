@@ -14,7 +14,9 @@
     "@wangeditor/editor-for-vue": "^5.1.12",
     "axios": "^1.6.8",
     "element-plus": "^2.7.2",
+    "globe.gl": "^2.45.3",
     "pinia": "^2.1.7",
+    "three": "^0.184.0",
     "vue": "^3.4.21",
     "vue-router": "^4.3.0"
   },

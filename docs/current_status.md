@@ -40,9 +40,9 @@
 - 评论删除级联在复杂场景下建议继续回归验证。
 
 ## 下次接手建议
-下次唤醒 Codex 时，优先读取以下文件后直接开发：
+下次继续开发时，优先读取以下文件：
 
-- `handover_to_claude_code.md`
 - `docs/需求文档.md`
 - `docs/开发计划.md`
 - `docs/current_status.md`
+- `docs/项目功能完成度清单.md`

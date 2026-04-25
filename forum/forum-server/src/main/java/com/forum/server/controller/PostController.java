@@ -6,6 +6,7 @@ import com.forum.pojo.dto.PostCreateDTO;
 import com.forum.pojo.dto.PostPageQueryDTO;
 import com.forum.pojo.dto.PostUpdateDTO;
 import com.forum.pojo.vo.PostDetailVO;
+import com.forum.pojo.vo.PostGlobeVO;
 import com.forum.pojo.vo.PostListVO;
 import com.forum.server.service.PostService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -13,6 +14,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/posts")
@@ -28,10 +31,22 @@ public class PostController {
         return Result.success(postService.getPostPage(queryDTO));
     }
 
+    @GetMapping("/globe")
+    @Operation(summary = "获取有地理位置的帖子（供3D地球渲染）")
+    public Result<List<PostGlobeVO>> getGlobePosts() {
+        return Result.success(postService.getGlobePosts());
+    }
+
     @GetMapping("/{id}")
     @Operation(summary = "获取帖子详情")
     public Result<PostDetailVO> getPostDetail(@PathVariable Long id) {
         return Result.success(postService.getPostDetail(id));
+    }
+
+    @GetMapping("/{id}/edit")
+    @Operation(summary = "获取帖子编辑信息")
+    public Result<PostDetailVO> getPostEditDetail(@PathVariable Long id) {
+        return Result.success(postService.getPostEditDetail(id));
     }
 
     @PostMapping

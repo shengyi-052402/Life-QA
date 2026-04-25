@@ -24,7 +24,16 @@
             </div>
 
             <div v-if="post.tags?.length" class="post-tags mt-15 mb-20">
-              <el-tag v-for="tag in post.tags" :key="tag.id" class="mr-2" type="info" round># {{ tag.name }}</el-tag>
+              <el-tag
+                v-for="tag in post.tags"
+                :key="tag.id"
+                class="mr-2 cursor-pointer"
+                type="info"
+                round
+                @click="handleTagClick(tag)"
+              >
+                # {{ tag.name }}
+              </el-tag>
             </div>
 
             <div class="post-content wangeditor-content" v-html="post.content"></div>
@@ -125,6 +134,10 @@ async function fetchDetail() {
 
 function handleEdit() {
   router.push(`/post/edit/${postId}`)
+}
+
+function handleTagClick(tag) {
+  router.push({ path: '/explore', query: { tagId: tag.id, tagName: tag.name } })
 }
 
 function handleDelete() {
@@ -281,4 +294,5 @@ onMounted(() => {
 .ml-3 { margin-left: 12px; }
 .mr-2 { margin-right: 8px; }
 .mr-1 { margin-right: 4px; }
+.cursor-pointer { cursor: pointer; }
 </style>

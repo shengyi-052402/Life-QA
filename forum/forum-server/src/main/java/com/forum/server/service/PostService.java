@@ -7,7 +7,10 @@ import com.forum.pojo.dto.PostPageQueryDTO;
 import com.forum.pojo.dto.PostUpdateDTO;
 import com.forum.pojo.entity.Post;
 import com.forum.pojo.vo.PostDetailVO;
+import com.forum.pojo.vo.PostGlobeVO;
 import com.forum.pojo.vo.PostListVO;
+
+import java.util.List;
 
 public interface PostService extends IService<Post> {
 
@@ -32,7 +35,17 @@ public interface PostService extends IService<Post> {
     PostDetailVO getPostDetail(Long id);
 
     /**
+     * 获取帖子编辑信息
+     */
+    PostDetailVO getPostEditDetail(Long id);
+
+    /**
      * 分页查询帖子列表
      */
     PageResult<PostListVO> getPostPage(PostPageQueryDTO queryDTO);
+
+    /**
+     * 获取有地理位置的帖子列表（供 3D 地球渲染使用）
+     */
+    List<PostGlobeVO> getGlobePosts();
 }
