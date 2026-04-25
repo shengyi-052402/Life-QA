@@ -84,7 +84,9 @@
 
         <div v-if="post" class="glass-panel sidebar-box mt-20">
           <h3>所属分类</h3>
-          <el-tag size="large" type="success" class="mt-10">{{ post.categoryName }}</el-tag>
+          <el-tag size="large" type="success" class="mt-10 cursor-pointer" @click="handleCategoryClick">
+            {{ post.categoryName }}
+          </el-tag>
         </div>
       </el-col>
     </el-row>
@@ -137,7 +139,14 @@ function handleEdit() {
 }
 
 function handleTagClick(tag) {
-  router.push({ path: '/explore', query: { tagId: tag.id, tagName: tag.name } })
+  router.push(`/tag/${tag.id}`)
+}
+
+function handleCategoryClick() {
+  if (!post.value?.categoryId) {
+    return
+  }
+  router.push(`/category/${post.value.categoryId}`)
 }
 
 function handleDelete() {

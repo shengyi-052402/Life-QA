@@ -93,7 +93,7 @@
               :key="cat.id"
               class="category-item"
               :class="{ active: queryParams.categoryId === cat.id }"
-              @click="handleCategoryChange(cat.id)"
+              @click="router.push(`/category/${cat.id}`)"
             >
               {{ cat.name }} <span class="count">{{ cat.postCount }}</span>
             </div>
@@ -107,7 +107,7 @@
               v-for="tag in hotTags"
               :key="tag.id"
               class="mr-2 mb-2 cursor-pointer"
-              @click="handleTagChange(tag.id, tag.name)"
+              @click="router.push(`/tag/${tag.id}`)"
             >
               #{{ tag.name }}
             </el-tag>

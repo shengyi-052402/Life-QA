@@ -43,6 +43,18 @@ const routes = [
         meta: { title: '搜索' }
       },
       {
+        path: 'category/:id',
+        name: 'CategoryPosts',
+        component: () => import('@/views/CategoryPosts.vue'),
+        meta: { title: '分类帖子' }
+      },
+      {
+        path: 'tag/:id',
+        name: 'TagPosts',
+        component: () => import('@/views/TagPosts.vue'),
+        meta: { title: '标签帖子' }
+      },
+      {
         path: 'user/:id',
         name: 'UserCenter',
         component: () => import('@/views/UserCenter.vue'),
