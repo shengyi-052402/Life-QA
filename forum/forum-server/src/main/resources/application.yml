@@ -39,8 +39,8 @@ knife4j:
 
 aliyun:
   oss:
-    endpoint: ${aliyun.oss.endpoint:}
-    access-key-id: ${aliyun.oss.access-key-id:}
-    access-key-secret: ${aliyun.oss.access-key-secret:}
-    bucket-name: ${aliyun.oss.bucket-name:}
-    domain: ${aliyun.oss.domain:}
+    endpoint: ${OSS_ENDPOINT:}
+    access-key-id: ${OSS_ACCESS_KEY_ID:}
+    access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
+    bucket-name: ${OSS_BUCKET_NAME:}
+    domain: ${OSS_DOMAIN:}

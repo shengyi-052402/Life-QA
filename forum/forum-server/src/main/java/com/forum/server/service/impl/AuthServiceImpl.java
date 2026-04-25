@@ -41,7 +41,23 @@ public class AuthServiceImpl implements AuthService {
             throw new BaseException(MessageConstant.ACCOUNT_DISABLED);
         }
 
-        // 生成 JWT Token
+        return buildLoginVO(user);
+    }
+
+    @Override
+    public UserLoginVO refresh(Long userId) {
+        User user = userService.getById(userId);
+        if (user == null) {
+            throw new AccountNotFoundException(MessageConstant.ACCOUNT_NOT_FOUND);
+        }
+        if (user.getStatus() == StatusConstant.USER_DISABLED) {
+            throw new BaseException(MessageConstant.ACCOUNT_DISABLED);
+        }
+
+        return buildLoginVO(user);
+    }
+
+    private UserLoginVO buildLoginVO(User user) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", user.getId());
         claims.put("role", user.getRole());

@@ -9,9 +9,12 @@ import com.forum.common.exception.BaseException;
 import com.forum.common.exception.ForbiddenException;
 import com.forum.common.result.PageResult;
 import com.forum.common.utils.HtmlUtil;
+import com.forum.pojo.dto.AdminPostPageQueryDTO;
+import com.forum.pojo.dto.AdminPostUpdateDTO;
 import com.forum.pojo.dto.PostCreateDTO;
 import com.forum.pojo.dto.PostPageQueryDTO;
 import com.forum.pojo.dto.PostUpdateDTO;
+import com.forum.pojo.vo.AdminPostVO;
 import com.forum.pojo.entity.Category;
 import com.forum.pojo.entity.Comment;
 import com.forum.pojo.entity.Favorite;
@@ -32,6 +35,7 @@ import com.forum.server.mapper.PostMapper;
 import com.forum.server.mapper.PostTagMapper;
 import com.forum.server.service.CategoryService;
 import com.forum.server.service.PostService;
+import com.forum.server.service.SearchService;
 import com.forum.server.service.TagService;
 import com.forum.server.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -56,6 +60,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
     private final PostTagMapper postTagMapper;
     private final UserService userService;
     private final CategoryService categoryService;
+    private final SearchService searchService;
     private final PostLikeMapper postLikeMapper;
     private final FavoriteMapper favoriteMapper;
     private final CommentMapper commentMapper;
@@ -100,6 +105,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         }
 
         handleTags(postId, dto.getTagIds(), dto.getNewTags());
+        searchService.syncPost(postId);
         return postId;
     }
 
@@ -141,6 +147,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         postTagMapper.delete(new LambdaQueryWrapper<PostTag>().eq(PostTag::getPostId, post.getId()));
         decrementTagCounts(oldTagIds);
         handleTags(post.getId(), dto.getTagIds(), dto.getNewTags());
+        searchService.syncPost(post.getId());
     }
 
     @Override
@@ -172,6 +179,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         postLikeMapper.delete(new LambdaQueryWrapper<PostLike>().eq(PostLike::getPostId, id));
         favoriteMapper.delete(new LambdaQueryWrapper<Favorite>().eq(Favorite::getPostId, id));
         commentMapper.delete(new LambdaQueryWrapper<Comment>().eq(Comment::getPostId, id));
+        searchService.deletePost(id);
     }
 
     @Override
@@ -308,6 +316,69 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
     }
 
     @Override
+    public PageResult<AdminPostVO> getAdminPostPage(AdminPostPageQueryDTO queryDTO) {
+        assertAdmin();
+
+        Page<Post> pageParam = new Page<>(queryDTO.getPage(), queryDTO.getSize());
+        LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<>();
+
+        if (queryDTO.getCategoryId() != null) {
+            wrapper.eq(Post::getCategoryId, queryDTO.getCategoryId());
+        }
+        if (queryDTO.getUserId() != null) {
+            wrapper.eq(Post::getUserId, queryDTO.getUserId());
+        }
+        if (queryDTO.getStatus() != null) {
+            wrapper.eq(Post::getStatus, queryDTO.getStatus());
+        }
+        if (StringUtils.hasText(queryDTO.getKeyword())) {
+            wrapper.and(q -> q.like(Post::getTitle, queryDTO.getKeyword())
+                    .or()
+                    .like(Post::getSummary, queryDTO.getKeyword()));
+        }
+        wrapper.orderByDesc(Post::getIsTop).orderByDesc(Post::getCreatedAt);
+
+        page(pageParam, wrapper);
+
+        List<AdminPostVO> records = pageParam.getRecords().stream()
+                .map(this::buildAdminPostVO)
+                .collect(Collectors.toList());
+
+        return new PageResult<>(pageParam.getTotal(), records);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void adminUpdatePost(Long id, AdminPostUpdateDTO dto) {
+        assertAdmin();
+
+        if (dto.getStatus() == null && dto.getIsTop() == null && dto.getIsEssence() == null) {
+            throw new BaseException("至少提供一个更新项");
+        }
+
+        Post post = getById(id);
+        if (post == null) {
+            throw new BaseException(MessageConstant.POST_NOT_FOUND);
+        }
+
+        if (dto.getStatus() != null) {
+            post.setStatus(dto.getStatus());
+        }
+        if (dto.getIsTop() != null) {
+            post.setIsTop(dto.getIsTop());
+        }
+        if (dto.getIsEssence() != null) {
+            post.setIsEssence(dto.getIsEssence());
+        }
+        updateById(post);
+        if (post.getStatus() != null && post.getStatus() == 1) {
+            searchService.syncPost(id);
+        } else {
+            searchService.deletePost(id);
+        }
+    }
+
+    @Override
     public List<PostGlobeVO> getGlobePosts() {
         // 只查询有地理位置信息的帖子，最多返回 500 条
         Page<Post> page = new Page<>(1, 500);
@@ -378,6 +449,18 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         }
     }
 
+    private void assertAdmin() {
+        Long userId = BaseContext.getCurrentId();
+        if (userId == null) {
+            throw new ForbiddenException(MessageConstant.NO_PERMISSION);
+        }
+
+        User currentUser = userService.getById(userId);
+        if (currentUser == null || currentUser.getRole() == null || currentUser.getRole() != 1) {
+            throw new ForbiddenException(MessageConstant.NO_PERMISSION);
+        }
+    }
+
     private PostDetailVO buildPostDetailVO(Post post) {
         PostDetailVO vo = PostDetailVO.builder().build();
         BeanUtils.copyProperties(post, vo);
@@ -432,6 +515,34 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
                 tagService.updateById(tag);
             }
         }
+    }
+
+    private AdminPostVO buildAdminPostVO(Post post) {
+        User author = userService.getById(post.getUserId());
+        Category category = categoryService.getById(post.getCategoryId());
+        return AdminPostVO.builder()
+                .id(post.getId())
+                .title(post.getTitle())
+                .summary(post.getSummary())
+                .status(post.getStatus())
+                .isTop(post.getIsTop() != null && post.getIsTop() == 1)
+                .isEssence(post.getIsEssence() != null && post.getIsEssence() == 1)
+                .viewCount(post.getViewCount())
+                .likeCount(post.getLikeCount())
+                .commentCount(post.getCommentCount())
+                .favoriteCount(post.getFavoriteCount())
+                .categoryId(post.getCategoryId())
+                .categoryName(category != null ? category.getName() : null)
+                .author(author == null ? null : UserVO.builder()
+                        .id(author.getId())
+                        .username(author.getUsername())
+                        .nickname(author.getNickname())
+                        .avatar(author.getAvatar())
+                        .role(author.getRole())
+                        .build())
+                .createdAt(post.getCreatedAt())
+                .updatedAt(post.getUpdatedAt())
+                .build();
     }
 
     private String highlightText(String text, String keyword) {

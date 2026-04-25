@@ -6,7 +6,10 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.forum.common.constant.MessageConstant;
 import com.forum.common.context.BaseContext;
 import com.forum.common.exception.BaseException;
+import com.forum.common.exception.ForbiddenException;
 import com.forum.common.result.PageResult;
+import com.forum.pojo.dto.AdminUserPageQueryDTO;
+import com.forum.pojo.dto.AdminUserUpdateDTO;
 import com.forum.pojo.dto.PasswordUpdateDTO;
 import com.forum.pojo.dto.UserRegisterDTO;
 import com.forum.pojo.dto.UserUpdateDTO;
@@ -14,6 +17,7 @@ import com.forum.pojo.entity.Comment;
 import com.forum.pojo.entity.Favorite;
 import com.forum.pojo.entity.Post;
 import com.forum.pojo.entity.User;
+import com.forum.pojo.vo.AdminUserVO;
 import com.forum.pojo.vo.PostListVO;
 import com.forum.pojo.vo.UserActivityVO;
 import com.forum.pojo.vo.UserVO;
@@ -27,6 +31,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -223,9 +228,90 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         );
     }
 
+    @Override
+    public PageResult<AdminUserVO> getAdminUserPage(AdminUserPageQueryDTO dto) {
+        ensureAdmin();
+
+        Page<User> pageParam = new Page<>(dto.getPage(), dto.getSize());
+        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
+
+        if (StringUtils.hasText(dto.getKeyword())) {
+            wrapper.and(q -> q.like(User::getUsername, dto.getKeyword())
+                    .or()
+                    .like(User::getNickname, dto.getKeyword())
+                    .or()
+                    .like(User::getEmail, dto.getKeyword()));
+        }
+        if (dto.getRole() != null) {
+            wrapper.eq(User::getRole, dto.getRole());
+        }
+        if (dto.getStatus() != null) {
+            wrapper.eq(User::getStatus, dto.getStatus());
+        }
+        wrapper.orderByDesc(User::getCreatedAt);
+
+        page(pageParam, wrapper);
+
+        List<AdminUserVO> records = pageParam.getRecords().stream()
+                .map(user -> AdminUserVO.builder()
+                        .id(user.getId())
+                        .username(user.getUsername())
+                        .email(user.getEmail())
+                        .nickname(user.getNickname())
+                        .avatar(user.getAvatar())
+                        .bio(user.getBio())
+                        .role(user.getRole())
+                        .status(user.getStatus())
+                        .postCount(user.getPostCount())
+                        .createdAt(user.getCreatedAt())
+                        .build())
+                .collect(Collectors.toList());
+
+        return new PageResult<>(pageParam.getTotal(), records);
+    }
+
+    @Override
+    public void adminUpdateUser(Long id, AdminUserUpdateDTO dto) {
+        ensureAdmin();
+
+        if (dto.getRole() == null && dto.getStatus() == null) {
+            throw new BaseException("至少提供一个更新项");
+        }
+
+        User user = getById(id);
+        if (user == null) {
+            throw new BaseException(MessageConstant.ACCOUNT_NOT_FOUND);
+        }
+
+        Long currentUserId = BaseContext.getCurrentId();
+        if (currentUserId != null && currentUserId.equals(id) && dto.getStatus() != null && dto.getStatus() == 0) {
+            throw new BaseException("不能禁用当前登录管理员");
+        }
+
+        if (dto.getRole() != null) {
+            user.setRole(dto.getRole());
+        }
+        if (dto.getStatus() != null) {
+            user.setStatus(dto.getStatus());
+        }
+        updateById(user);
+    }
+
     private void ensureUserExists(Long userId) {
         if (getById(userId) == null) {
             throw new BaseException(MessageConstant.ACCOUNT_NOT_FOUND);
+        }
+    }
+
+    private void ensureAdmin() {
+        Long currentUserId = BaseContext.getCurrentId();
+        if (currentUserId == null) {
+            throw new ForbiddenException(MessageConstant.NO_PERMISSION);
+        }
+
+        User currentUser = getById(currentUserId);
+        if (currentUser == null || currentUser.getRole() == null || currentUser.getRole() != 1) {
+            throw new ForbiddenException(MessageConstant.NO_PERMISSION);
         }
     }
 

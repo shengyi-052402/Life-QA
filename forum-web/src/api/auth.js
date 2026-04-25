@@ -38,3 +38,10 @@ export function updateCurrentUserPassword(data) {
     data
   })
 }
+
+export function refreshToken() {
+  return request({
+    url: '/auth/refresh',
+    method: 'post'
+  })
+}

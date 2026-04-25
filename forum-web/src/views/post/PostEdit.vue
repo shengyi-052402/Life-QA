@@ -135,7 +135,6 @@ import { getCategories } from '@/api/category'
 import { getTags } from '@/api/tag'
 import { getPostEditDetail, updatePost } from '@/api/post'
 import { useUserStore } from '@/stores/user'
-import { searchCities } from '@/data/cities'
 
 const route = useRoute()
 const router = useRouter()
@@ -149,6 +148,15 @@ const categories = ref([])
 const allTags = ref([])
 const cityOptions = ref([])
 const citySelection = ref(null)
+let searchCitiesFn = null
+
+async function getSearchCities() {
+  if (!searchCitiesFn) {
+    const mod = await import('@/data/cities')
+    searchCitiesFn = mod.searchCities
+  }
+  return searchCitiesFn
+}
 
 const postForm = reactive({
   title: '',
@@ -208,7 +216,12 @@ const beforeCoverUpload = (file) => {
   return isImage && isLt5M
 }
 
-const onCitySearch = (query) => {
+const onCitySearch = async (query) => {
+  if (!query?.trim()) {
+    cityOptions.value = []
+    return
+  }
+  const searchCities = await getSearchCities()
   cityOptions.value = searchCities(query)
 }
 
@@ -260,13 +273,14 @@ onBeforeUnmount(() => {
   editor.destroy()
 })
 
-function fillCitySelection(post) {
+async function fillCitySelection(post) {
   if (!post.locationName || post.latitude == null || post.longitude == null) {
     citySelection.value = null
     cityOptions.value = []
     return
   }
 
+  const searchCities = await getSearchCities()
   const matchedCity = searchCities(post.locationName).find(city => city.nameZh === post.locationName || city.name === post.locationName)
   const city = matchedCity || {
     name: post.locationName,
@@ -300,7 +314,7 @@ async function fetchData() {
     postForm.locationName = post.locationName
     postForm.latitude = post.latitude
     postForm.longitude = post.longitude
-    fillCitySelection(post)
+    await fillCitySelection(post)
   } finally {
     pageLoading.value = false
   }

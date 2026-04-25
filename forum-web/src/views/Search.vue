@@ -52,7 +52,7 @@
 <script setup>
 import { reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { getPostPage } from '@/api/post'
+import { searchPosts } from '@/api/search'
 import { formatDate } from '@/utils/format'
 
 const route = useRoute()
@@ -72,7 +72,7 @@ const fetchSearchResults = async () => {
   if (!queryParams.keyword) return
   loading.value = true
   try {
-    const res = await getPostPage(queryParams)
+    const res = await searchPosts(queryParams)
     postList.value = res.data.records
     total.value = res.data.total
   } catch (error) {

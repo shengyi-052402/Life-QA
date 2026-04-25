@@ -9,8 +9,10 @@ import com.forum.common.exception.BaseException;
 import com.forum.common.exception.ForbiddenException;
 import com.forum.common.result.PageResult;
 import com.forum.common.utils.HtmlUtil;
+import com.forum.pojo.dto.AdminCommentPageQueryDTO;
 import com.forum.pojo.dto.CommentCreateDTO;
 import com.forum.pojo.dto.CommentPageQueryDTO;
+import com.forum.pojo.vo.AdminCommentVO;
 import com.forum.pojo.entity.Comment;
 import com.forum.pojo.entity.CommentLike;
 import com.forum.pojo.entity.Post;
@@ -23,11 +25,13 @@ import com.forum.server.mapper.CommentMapper;
 import com.forum.server.mapper.PostMapper;
 import com.forum.server.service.CommentService;
 import com.forum.server.service.NotificationService;
+import com.forum.server.service.SearchService;
 import com.forum.server.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -42,6 +46,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
     private final PostMapper postMapper;
     private final CommentLikeMapper commentLikeMapper;
     private final NotificationService notificationService;
+    private final SearchService searchService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -97,6 +102,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             );
         }
 
+        searchService.syncPost(dto.getPostId());
         return comment.getId();
     }
 
@@ -121,6 +127,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         if (post != null) {
             post.setCommentCount(Math.max(0, post.getCommentCount() - 1));
             postMapper.updateById(post);
+            searchService.syncPost(post.getId());
         }
     }
 
@@ -167,6 +174,35 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         }).collect(Collectors.toList());
 
         return new PageResult<>(pageParam.getTotal(), voList);
+    }
+
+    @Override
+    public PageResult<AdminCommentVO> getAdminCommentPage(AdminCommentPageQueryDTO dto) {
+        ensureAdmin();
+
+        Page<Comment> pageParam = new Page<>(dto.getPage(), dto.getSize());
+        LambdaQueryWrapper<Comment> wrapper = new LambdaQueryWrapper<>();
+
+        if (dto.getPostId() != null) {
+            wrapper.eq(Comment::getPostId, dto.getPostId());
+        }
+        if (dto.getUserId() != null) {
+            wrapper.eq(Comment::getUserId, dto.getUserId());
+        }
+        if (dto.getStatus() != null) {
+            wrapper.eq(Comment::getStatus, dto.getStatus());
+        }
+        if (StringUtils.hasText(dto.getKeyword())) {
+            wrapper.like(Comment::getContent, dto.getKeyword());
+        }
+        wrapper.orderByDesc(Comment::getCreatedAt);
+        page(pageParam, wrapper);
+
+        List<AdminCommentVO> records = pageParam.getRecords().stream()
+                .map(this::buildAdminCommentVO)
+                .collect(Collectors.toList());
+
+        return new PageResult<>(pageParam.getTotal(), records);
     }
 
     @Override
@@ -239,5 +275,46 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         }
 
         return vo;
+    }
+
+    private AdminCommentVO buildAdminCommentVO(Comment comment) {
+        User author = userService.getById(comment.getUserId());
+        User replyUser = comment.getReplyToUserId() == null ? null : userService.getById(comment.getReplyToUserId());
+        Post post = postMapper.selectById(comment.getPostId());
+
+        return AdminCommentVO.builder()
+                .id(comment.getId())
+                .content(comment.getContent())
+                .status(comment.getStatus())
+                .postId(comment.getPostId())
+                .postTitle(post != null ? post.getTitle() : null)
+                .parentId(comment.getParentId())
+                .likeCount(comment.getLikeCount())
+                .author(author == null ? null : UserVO.builder()
+                        .id(author.getId())
+                        .username(author.getUsername())
+                        .nickname(author.getNickname())
+                        .avatar(author.getAvatar())
+                        .build())
+                .replyToUser(replyUser == null ? null : UserVO.builder()
+                        .id(replyUser.getId())
+                        .username(replyUser.getUsername())
+                        .nickname(replyUser.getNickname())
+                        .avatar(replyUser.getAvatar())
+                        .build())
+                .createdAt(comment.getCreatedAt())
+                .build();
+    }
+
+    private void ensureAdmin() {
+        Long currentUserId = BaseContext.getCurrentId();
+        if (currentUserId == null) {
+            throw new ForbiddenException(MessageConstant.NO_PERMISSION);
+        }
+
+        User currentUser = userService.getById(currentUserId);
+        if (currentUser == null || currentUser.getRole() == null || currentUser.getRole() != 1) {
+            throw new ForbiddenException(MessageConstant.NO_PERMISSION);
+        }
     }
 }

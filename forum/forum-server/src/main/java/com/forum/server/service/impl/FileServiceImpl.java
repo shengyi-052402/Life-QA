@@ -1,6 +1,7 @@
 package com.forum.server.service.impl;
 
 import com.aliyun.oss.OSS;
+import com.aliyun.oss.OSSClientBuilder;
 import com.aliyun.oss.model.ObjectMetadata;
 import com.aliyun.oss.model.PutObjectRequest;
 import com.forum.common.constant.MessageConstant;
@@ -25,7 +26,6 @@ import java.util.UUID;
 public class FileServiceImpl implements FileService {
 
     private final OssConfig ossConfig;
-    private final OSS ossClient;
 
     @Override
     public String uploadFile(MultipartFile file) {
@@ -49,7 +49,16 @@ public class FileServiceImpl implements FileService {
     }
 
     private String uploadToOss(MultipartFile file, String objectKey) {
-        try (InputStream inputStream = file.getInputStream()) {
+        OSS ossClient = null;
+        InputStream inputStream = null;
+        try {
+            inputStream = file.getInputStream();
+            ossClient = new OSSClientBuilder().build(
+                    ossConfig.getEndpoint(),
+                    ossConfig.getAccessKeyId(),
+                    ossConfig.getAccessKeySecret()
+            );
+
             ObjectMetadata metadata = new ObjectMetadata();
             metadata.setContentLength(file.getSize());
             metadata.setContentType(file.getContentType());
@@ -68,6 +77,13 @@ public class FileServiceImpl implements FileService {
         } catch (IOException e) {
             log.error("OSS upload failed, objectKey={}", objectKey, e);
             throw new BaseException(MessageConstant.UPLOAD_FAILED);
+        } finally {
+            if (inputStream != null) {
+                try { inputStream.close(); } catch (IOException ignored) {}
+            }
+            if (ossClient != null) {
+                try { ossClient.shutdown(); } catch (Exception ignored) {}
+            }
         }
     }
 

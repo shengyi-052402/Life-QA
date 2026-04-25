@@ -39,9 +39,7 @@ public class AuthController {
     @PostMapping("/refresh")
     @Operation(summary = "刷新 Token")
     public Result<UserLoginVO> refresh() {
-        // 在拦截器中已经校验过 Token 并设置了 BaseContext
-        // 这个接口仅在真正需要时实现更复杂的长短token逻辑
-        // 目前返回成功即可，如果需要刷新机制可在此派发新token
-        return Result.success();
+        Long currentId = BaseContext.getCurrentId();
+        return Result.success(authService.refresh(currentId));
     }
 }

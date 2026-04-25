@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { login as loginApi, getCurrentUserInfo, updateCurrentUserInfo, updateCurrentUserPassword } from '@/api/auth'
+import { login as loginApi, getCurrentUserInfo, refreshToken as refreshTokenApi, updateCurrentUserInfo, updateCurrentUserPassword } from '@/api/auth'
 import { getToken, setToken, removeToken } from '@/utils/auth'
 import { useNotificationStore } from '@/stores/notification'
 
@@ -58,6 +58,22 @@ export const useUserStore = defineStore('user', () => {
     return updateCurrentUserPassword(passwordForm)
   }
 
+  async function refreshToken() {
+    if (!token.value) return null
+
+    const res = await refreshTokenApi()
+    if (res.data?.token) {
+      setTokenState(res.data.token)
+      if (userInfo.value) {
+        userInfo.value = {
+          ...userInfo.value,
+          token: res.data.token
+        }
+      }
+    }
+    return res.data
+  }
+
   return {
     token,
     userInfo,
@@ -66,6 +82,8 @@ export const useUserStore = defineStore('user', () => {
     fetchUserInfo,
     updateProfile,
     changePassword,
-    setUserInfo
+    setUserInfo,
+    refreshToken,
+    setTokenState
   }
 })

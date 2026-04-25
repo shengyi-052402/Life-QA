@@ -9,4 +9,9 @@ public interface AuthService {
      * 用户登录
      */
     UserLoginVO login(UserLoginDTO loginDTO);
+
+    /**
+     * 刷新 Token
+     */
+    UserLoginVO refresh(Long userId);
 }

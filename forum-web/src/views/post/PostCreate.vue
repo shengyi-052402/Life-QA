@@ -137,7 +137,6 @@ import { getCategories } from '@/api/category'
 import { getTags } from '@/api/tag'
 import { createPost } from '@/api/post'
 import { useUserStore } from '@/stores/user'
-import { searchCities } from '@/data/cities'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -150,6 +149,15 @@ const allTags = ref([])
 
 // 城市搜索
 const cityOptions = ref([])
+let searchCitiesFn = null
+
+async function getSearchCities() {
+  if (!searchCitiesFn) {
+    const mod = await import('@/data/cities')
+    searchCitiesFn = mod.searchCities
+  }
+  return searchCitiesFn
+}
 
 const postForm = reactive({
   title: '',
@@ -211,7 +219,12 @@ const beforeCoverUpload = (file) => {
 }
 
 // 城市搜索远程方法
-const onCitySearch = (query) => {
+const onCitySearch = async (query) => {
+  if (!query?.trim()) {
+    cityOptions.value = []
+    return
+  }
+  const searchCities = await getSearchCities()
   cityOptions.value = searchCities(query)
 }
 

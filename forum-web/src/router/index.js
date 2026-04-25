@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { getToken } from '@/utils/auth'
+import { useUserStore } from '@/stores/user'
 
 const routes = [
   {
@@ -75,6 +77,43 @@ const routes = [
     ]
   },
   {
+    path: '/admin',
+    component: () => import('@/views/admin/AdminLayout.vue'),
+    meta: { title: '管理后台', requiresAuth: true, requiresAdmin: true },
+    children: [
+      {
+        path: '',
+        name: 'AdminDashboard',
+        component: () => import('@/views/admin/Dashboard.vue'),
+        meta: { title: '后台概览', requiresAuth: true, requiresAdmin: true }
+      },
+      {
+        path: 'users',
+        name: 'AdminUsers',
+        component: () => import('@/views/admin/UserManage.vue'),
+        meta: { title: '用户管理', requiresAuth: true, requiresAdmin: true }
+      },
+      {
+        path: 'posts',
+        name: 'AdminPosts',
+        component: () => import('@/views/admin/PostManage.vue'),
+        meta: { title: '帖子管理', requiresAuth: true, requiresAdmin: true }
+      },
+      {
+        path: 'comments',
+        name: 'AdminComments',
+        component: () => import('@/views/admin/CommentManage.vue'),
+        meta: { title: '评论管理', requiresAuth: true, requiresAdmin: true }
+      },
+      {
+        path: 'categories',
+        name: 'AdminCategories',
+        component: () => import('@/views/admin/CategoryManage.vue'),
+        meta: { title: '分类管理', requiresAuth: true, requiresAdmin: true }
+      }
+    ]
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/Login.vue'),
@@ -93,17 +132,36 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   if (to.meta.title) {
     document.title = `${to.meta.title} - 开发者论坛`
   }
 
   const hasToken = getToken()
   const requiresAuth = to.matched.some(record => record.meta?.requiresAuth)
+  const requiresAdmin = to.matched.some(record => record.meta?.requiresAdmin)
 
   if (requiresAuth && !hasToken) {
     next(`/login?redirect=${to.fullPath}`)
     return
+  }
+
+  if (requiresAdmin) {
+    const userStore = useUserStore()
+    if (!userStore.userInfo && hasToken) {
+      try {
+        await userStore.fetchUserInfo()
+      } catch (error) {
+        next(`/login?redirect=${to.fullPath}`)
+        return
+      }
+    }
+
+    if (userStore.userInfo?.role !== 1) {
+      ElMessage.error('没有后台访问权限')
+      next('/explore')
+      return
+    }
   }
 
   next()

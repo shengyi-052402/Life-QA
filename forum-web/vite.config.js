@@ -10,6 +10,33 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return
+          }
+
+          if (id.includes('globe.gl') || id.includes('three') || id.includes('three-globe')) {
+            return 'globe-vendor'
+          }
+
+          if (id.includes('@wangeditor')) {
+            return 'editor-vendor'
+          }
+
+          if (id.includes('element-plus') || id.includes('@element-plus')) {
+            return 'element-vendor'
+          }
+
+          if (id.includes('vue') || id.includes('pinia') || id.includes('vue-router')) {
+            return 'vue-vendor'
+          }
+        }
+      }
+    }
+  },
   server: {
     port: 3000,
     proxy: {

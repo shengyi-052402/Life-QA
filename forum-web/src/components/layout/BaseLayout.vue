@@ -7,14 +7,19 @@
         </div>
 
         <div class="header-right">
-          <el-input
+          <el-autocomplete
             v-model="searchKeyword"
+            :fetch-suggestions="querySearch"
             placeholder="搜索帖子..."
             class="search-input"
-            :prefix-icon="Search"
             @keyup.enter="handleSearch"
+            @select="handleSuggestionSelect"
             round
-          />
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-autocomplete>
 
           <template v-if="userStore.token">
             <el-badge :value="notificationStore.unreadCount" :hidden="notificationStore.unreadCount === 0" class="notification-badge">
@@ -33,6 +38,7 @@
                   <el-dropdown-item command="profile">个人主页</el-dropdown-item>
                   <el-dropdown-item command="notifications">通知中心</el-dropdown-item>
                   <el-dropdown-item command="settings">账号设置</el-dropdown-item>
+                  <el-dropdown-item v-if="userStore.userInfo?.role === 1" command="admin">管理后台</el-dropdown-item>
                   <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
@@ -63,12 +69,14 @@ import { useRouter } from 'vue-router'
 import { Bell, Search } from '@element-plus/icons-vue'
 import { useNotificationStore } from '@/stores/notification'
 import { useUserStore } from '@/stores/user'
+import { getSearchSuggestions } from '@/api/search'
 
 const router = useRouter()
 const userStore = useUserStore()
 const notificationStore = useNotificationStore()
 const searchKeyword = ref('')
 const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
+let suggestTimer = null
 
 onMounted(async () => {
   if (userStore.token && !userStore.userInfo) {
@@ -89,6 +97,8 @@ function handleCommand(command) {
     router.push(`/user/${userStore.userInfo?.id}`)
   } else if (command === 'notifications') {
     router.push('/notifications')
+  } else if (command === 'admin') {
+    router.push('/admin')
   }
 }
 
@@ -96,6 +106,38 @@ function handleSearch() {
   if (searchKeyword.value.trim()) {
     router.push({ path: '/search', query: { q: searchKeyword.value.trim() } })
   }
+}
+
+async function querySearch(queryString, callback) {
+  if (!queryString?.trim()) {
+    if (suggestTimer) {
+      clearTimeout(suggestTimer)
+      suggestTimer = null
+    }
+    callback([])
+    return
+  }
+
+  if (suggestTimer) {
+    clearTimeout(suggestTimer)
+  }
+
+  suggestTimer = window.setTimeout(async () => {
+    try {
+      const res = await getSearchSuggestions(queryString.trim())
+      callback((res.data || []).map(item => ({ value: item })))
+    } catch (error) {
+      callback([])
+    }
+  }, 180)
+}
+
+function handleSuggestionSelect(item) {
+  if (!item?.value) {
+    return
+  }
+  searchKeyword.value = item.value
+  handleSearch()
 }
 </script>
 

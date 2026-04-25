@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
-import { getToken, removeToken } from './auth'
+import { getToken, isTokenExpiringSoon, removeToken, setToken } from './auth'
 import router from '@/router'
 
 // 创建 axios 实例
@@ -9,10 +9,43 @@ const service = axios.create({
   timeout: 10000
 })
 
+let refreshPromise = null
+
+async function ensureFreshToken() {
+  const token = getToken()
+  if (!token) return null
+  if (!isTokenExpiringSoon(token)) return token
+
+  if (!refreshPromise) {
+    refreshPromise = axios({
+      url: '/api/auth/refresh',
+      method: 'post',
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      timeout: 10000
+    })
+      .then(response => {
+        const res = response.data
+        if (res.code !== 200 || !res.data?.token) {
+          throw new Error(res.message || '刷新 Token 失败')
+        }
+        setToken(res.data.token)
+        return res.data.token
+      })
+      .finally(() => {
+        refreshPromise = null
+      })
+  }
+
+  return refreshPromise
+}
+
 // 请求拦截器
 service.interceptors.request.use(
-  config => {
-    const token = getToken()
+  async config => {
+    const isRefreshRequest = config.url === '/auth/refresh'
+    const token = isRefreshRequest ? getToken() : await ensureFreshToken()
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`
     }
@@ -53,7 +86,7 @@ service.interceptors.response.use(
     if (error.response && error.response.status === 401) {
       message = '认证失败，请重新登录'
       removeToken()
-      router.push('/login')
+      router.push(`/login?redirect=${router.currentRoute.value.fullPath}`)
     }
     ElMessage({
       message: message,
