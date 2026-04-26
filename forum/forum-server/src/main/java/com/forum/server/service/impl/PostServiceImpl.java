@@ -78,6 +78,8 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
                 .userId(userId)
                 .categoryId(dto.getCategoryId())
                 .locationName(dto.getLocationName())
+                .address(dto.getAddress())
+                .placeId(dto.getPlaceId())
                 .latitude(dto.getLatitude())
                 .longitude(dto.getLongitude())
                 .viewCount(0)
@@ -140,6 +142,8 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         post.setCoverImage(dto.getCoverImage());
         post.setCategoryId(dto.getCategoryId());
         post.setLocationName(dto.getLocationName());
+        post.setAddress(dto.getAddress());
+        post.setPlaceId(dto.getPlaceId());
         post.setLatitude(dto.getLatitude());
         post.setLongitude(dto.getLongitude());
         updateById(post);
@@ -397,6 +401,8 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
                     .title(post.getTitle())
                     .coverImage(post.getCoverImage())
                     .locationName(post.getLocationName())
+                    .address(post.getAddress())
+                    .placeId(post.getPlaceId())
                     .latitude(post.getLatitude())
                     .longitude(post.getLongitude())
                     .likeCount(post.getLikeCount())

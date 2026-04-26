@@ -2,8 +2,9 @@
   <div class="register-container">
     <div class="register-box glass-panel">
       <div class="register-header">
-        <h2 class="text-gradient">加入开发者论坛</h2>
-        <p>注册新账号</p>
+        <span class="auth-kicker">Life Q&A</span>
+        <h2 class="text-gradient">创建你的问答坐标</h2>
+        <p>注册账号，发布问题、收藏灵感、加入讨论</p>
       </div>
       
       <el-form :model="registerForm" :rules="rules" ref="registerFormRef" label-width="0">
@@ -134,15 +135,31 @@ const handleRegister = () => {
   display: flex;
   justify-content: center;
   align-items: center;
-  background: var(--bg-color);
-  background-image: radial-gradient(var(--border-color) 1px, transparent 1px);
-  background-size: 20px 20px;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 18% 78%, rgba(77, 216, 255, 0.2), transparent 26rem),
+    radial-gradient(circle at 78% 18%, rgba(155, 124, 255, 0.22), transparent 24rem),
+    var(--bg-color);
+  overflow: hidden;
+}
+
+.register-container::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(126, 214, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(126, 214, 255, 0.06) 1px, transparent 1px);
+  background-size: 42px 42px;
+  transform: perspective(700px) rotateX(58deg) translateY(18%);
+  transform-origin: center bottom;
 }
 
 .register-box {
-  width: 400px;
-  padding: 40px;
-  border-radius: var(--radius-lg);
+  width: min(440px, 100%);
+  padding: 42px;
+  border-radius: 24px;
   text-align: center;
 }
 
@@ -151,7 +168,8 @@ const handleRegister = () => {
 }
 
 .register-header h2 {
-  font-size: 1.5rem;
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-size: 1.75rem;
   margin-bottom: 8px;
 }
 
@@ -165,6 +183,17 @@ const handleRegister = () => {
   border-radius: var(--radius-md);
 }
 
+.auth-kicker {
+  display: inline-block;
+  margin-bottom: 10px;
+  color: var(--primary-color);
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
 .register-footer {
   margin-top: 20px;
   font-size: 0.9rem;
@@ -174,5 +203,11 @@ const handleRegister = () => {
 .register-footer a {
   color: var(--primary-color);
   font-weight: 500;
+}
+
+@media (max-width: 480px) {
+  .register-box {
+    padding: 28px 22px;
+  }
 }
 </style>

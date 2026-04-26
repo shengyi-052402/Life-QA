@@ -132,6 +132,7 @@ watch(
 
 .archive-header h1 {
   margin: 0;
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
   font-size: 2rem;
 }
 
@@ -150,6 +151,14 @@ watch(
   padding: 18px 0;
   border-bottom: 1px solid var(--border-color);
   cursor: pointer;
+  transition: var(--transition);
+}
+
+.post-item:hover {
+  padding-left: 16px;
+  padding-right: 16px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(90deg, rgba(77, 216, 255, 0.09), rgba(155, 124, 255, 0.05));
 }
 
 .post-item:last-child {

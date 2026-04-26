@@ -38,6 +38,12 @@ public class Post implements Serializable {
     /** 发帖地区名称（城市/地区） */
     private String locationName;
 
+    /** 精确地址 */
+    private String address;
+
+    /** Google Place ID */
+    private String placeId;
+
     /** 纬度 (-90 to 90) */
     private BigDecimal latitude;
 

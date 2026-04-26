@@ -30,6 +30,10 @@ public class PostDetailVO implements Serializable {
     private Boolean isFavorited;
     /** 发帖地区名称 */
     private String locationName;
+    /** 精确地址 */
+    private String address;
+    /** Google Place ID */
+    private String placeId;
     /** 纬度 */
     private BigDecimal latitude;
     /** 经度 */

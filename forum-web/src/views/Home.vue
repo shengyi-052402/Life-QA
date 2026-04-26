@@ -10,6 +10,9 @@
               <el-tab-pane label="点赞最多" name="most_liked" />
               <el-tab-pane label="最多评论" name="most_commented" />
             </el-tabs>
+            <el-link type="primary" :underline="false" class="guidelines-link" @click="router.push('/guidelines')">
+              社区规则
+            </el-link>
           </div>
 
           <div v-if="activeTagName || activeCategoryName" class="active-filters">
@@ -255,8 +258,23 @@ watch(
 }
 
 .filter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
   border-bottom: 1px solid var(--border-color);
   margin-bottom: 20px;
+}
+
+.sort-tabs {
+  flex: 1;
+  min-width: 0;
+}
+
+.guidelines-link {
+  flex: 0 0 auto;
+  font-weight: 500;
+  padding-bottom: 14px;
 }
 
 .active-filters {

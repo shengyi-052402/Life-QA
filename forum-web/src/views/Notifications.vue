@@ -231,6 +231,7 @@ onMounted(async () => {
 
 .page-head h1 {
   margin: 0;
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
   font-size: 1.7rem;
 }
 
@@ -280,13 +281,20 @@ onMounted(async () => {
 .notification-item {
   display: flex;
   gap: 14px;
-  padding: 18px 0;
+  padding: 18px 14px;
   border-bottom: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
   cursor: pointer;
+  transition: var(--transition);
 }
 
 .notification-item.unread {
-  background: rgba(245, 158, 11, 0.05);
+  background: rgba(77, 216, 255, 0.08);
+  box-shadow: inset 3px 0 0 var(--primary-color);
+}
+
+.notification-item:hover {
+  background: rgba(155, 124, 255, 0.08);
 }
 
 .notification-main {

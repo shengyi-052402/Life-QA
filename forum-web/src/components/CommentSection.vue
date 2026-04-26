@@ -333,6 +333,10 @@ onMounted(() => {
 .comment-publish-box {
   display: flex;
   align-items: flex-start;
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.035);
 }
 
 .publish-input-wrap {
@@ -346,15 +350,17 @@ onMounted(() => {
 
 .comment-item {
   display: flex;
-  margin-bottom: 25px;
-  padding-bottom: 20px;
+  margin-bottom: 16px;
+  padding: 16px;
   border-bottom: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.025);
 }
 
 .comment-item.focused,
 .sub-comment-item.focused {
-  background: rgba(245, 158, 11, 0.08);
+  background: rgba(77, 216, 255, 0.1);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 
 .comment-main {
@@ -394,9 +400,10 @@ onMounted(() => {
 }
 
 .sub-comment-tree {
-  background-color: var(--bg-color);
+  background: rgba(3, 8, 18, 0.5);
   padding: 12px 15px;
   border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
 }
 
 .sub-comment-item {
@@ -431,9 +438,10 @@ onMounted(() => {
 }
 
 .reply-box-inline {
-  background: var(--bg-color);
+  background: rgba(3, 8, 18, 0.6);
   padding: 15px;
   border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
 }
 
 .view-more-replies {

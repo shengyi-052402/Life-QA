@@ -5,7 +5,7 @@
       <aside class="admin-sidebar glass-panel">
         <div class="brand" @click="router.push('/admin')">
           <p class="brand-eyebrow">Console</p>
-          <h2>论坛后台</h2>
+          <h2>Life Q&A</h2>
         </div>
 
         <el-menu
@@ -36,7 +36,7 @@
         </el-menu>
 
         <div class="sidebar-footer">
-          <el-button round @click="router.push('/explore')">返回前台</el-button>
+          <el-button round @click="router.push('/explore')">返回星图</el-button>
         </div>
       </aside>
 
@@ -86,11 +86,22 @@ const activeMenu = computed(() => {
 .admin-shell {
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(99, 102, 241, 0.2), transparent 35%),
-    radial-gradient(circle at bottom right, rgba(16, 185, 129, 0.18), transparent 30%),
-    linear-gradient(180deg, #f5f7fb 0%, #edf2f7 100%);
+    radial-gradient(circle at top left, rgba(77, 216, 255, 0.2), transparent 35%),
+    radial-gradient(circle at bottom right, rgba(155, 124, 255, 0.18), transparent 30%),
+    linear-gradient(180deg, #02040a 0%, #050812 100%);
   padding: 24px;
   position: relative;
+}
+
+.admin-shell::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(126, 214, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(126, 214, 255, 0.045) 1px, transparent 1px);
+  background-size: 38px 38px;
 }
 
 .admin-panel {
@@ -105,7 +116,7 @@ const activeMenu = computed(() => {
 
 .admin-sidebar {
   padding: 24px 18px;
-  border-radius: 28px;
+  border-radius: 24px;
   display: flex;
   flex-direction: column;
   min-height: calc(100vh - 48px);
@@ -126,7 +137,8 @@ const activeMenu = computed(() => {
 .brand h2,
 .admin-header h1 {
   font-size: 1.6rem;
-  color: #0f172a;
+  color: var(--text-primary);
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
 }
 
 .admin-menu {
@@ -136,8 +148,13 @@ const activeMenu = computed(() => {
 }
 
 .admin-menu :deep(.el-menu-item) {
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   margin-bottom: 8px;
+}
+
+.admin-menu :deep(.el-menu-item.is-active) {
+  background: rgba(77, 216, 255, 0.12);
+  box-shadow: inset 3px 0 0 var(--primary-color), var(--glow-cyan);
 }
 
 .admin-main {
@@ -148,7 +165,7 @@ const activeMenu = computed(() => {
 
 .admin-header {
   padding: 20px 24px;
-  border-radius: 28px;
+  border-radius: 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;

@@ -2,8 +2,9 @@
   <div class="login-container">
     <div class="login-box glass-panel">
       <div class="login-header">
-        <h2 class="text-gradient">欢迎回到开发者论坛</h2>
-        <p>登录以继续</p>
+        <span class="auth-kicker">Life Q&A</span>
+        <h2 class="text-gradient">欢迎回到问答星图</h2>
+        <p>登录后继续探索来自全球的思考与答案</p>
       </div>
       
       <el-form :model="loginForm" :rules="rules" ref="loginFormRef" label-width="0">
@@ -95,15 +96,31 @@ const handleLogin = () => {
   display: flex;
   justify-content: center;
   align-items: center;
-  background: var(--bg-color);
-  background-image: radial-gradient(var(--border-color) 1px, transparent 1px);
-  background-size: 20px 20px;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(77, 216, 255, 0.22), transparent 26rem),
+    radial-gradient(circle at 82% 72%, rgba(155, 124, 255, 0.2), transparent 24rem),
+    var(--bg-color);
+  overflow: hidden;
+}
+
+.login-container::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(126, 214, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(126, 214, 255, 0.06) 1px, transparent 1px);
+  background-size: 42px 42px;
+  transform: perspective(700px) rotateX(58deg) translateY(18%);
+  transform-origin: center bottom;
 }
 
 .login-box {
-  width: 400px;
-  padding: 40px;
-  border-radius: var(--radius-lg);
+  width: min(420px, 100%);
+  padding: 42px;
+  border-radius: 24px;
   text-align: center;
 }
 
@@ -112,7 +129,8 @@ const handleLogin = () => {
 }
 
 .login-header h2 {
-  font-size: 1.5rem;
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-size: 1.75rem;
   margin-bottom: 8px;
 }
 
@@ -126,6 +144,17 @@ const handleLogin = () => {
   border-radius: var(--radius-md);
 }
 
+.auth-kicker {
+  display: inline-block;
+  margin-bottom: 10px;
+  color: var(--primary-color);
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
 .login-footer {
   margin-top: 20px;
   font-size: 0.9rem;
@@ -135,5 +164,11 @@ const handleLogin = () => {
 .login-footer a {
   color: var(--primary-color);
   font-weight: 500;
+}
+
+@media (max-width: 480px) {
+  .login-box {
+    padding: 28px 22px;
+  }
 }
 </style>

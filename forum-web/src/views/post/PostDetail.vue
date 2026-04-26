@@ -128,7 +128,7 @@ async function fetchDetail() {
   try {
     const res = await getPostDetail(postId)
     post.value = res.data
-    document.title = `${post.value.title} - 开发者论坛`
+    document.title = `${post.value.title} - Life Q&A`
   } finally {
     loading.value = false
   }
@@ -190,7 +190,7 @@ onMounted(() => {
 
 <style scoped>
 .main-box {
-  padding: 30px;
+  padding: 34px;
   border-radius: var(--radius-lg);
   min-height: 800px;
 }
@@ -201,7 +201,8 @@ onMounted(() => {
 }
 
 .post-title {
-  font-size: 2rem;
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-size: 2.15rem;
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1.4;
@@ -245,6 +246,7 @@ onMounted(() => {
   line-height: 1.8;
   color: var(--text-primary);
   word-break: break-word;
+  margin-top: 24px;
 }
 
 :deep(.post-content img) {
@@ -258,6 +260,11 @@ onMounted(() => {
   display: flex;
   justify-content: center;
   gap: 20px;
+}
+
+.sidebar-box h3 {
+  color: var(--primary-color);
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
 }
 
 .author-summary {
@@ -304,4 +311,28 @@ onMounted(() => {
 .mr-2 { margin-right: 8px; }
 .mr-1 { margin-right: 4px; }
 .cursor-pointer { cursor: pointer; }
+
+@media (max-width: 960px) {
+  :deep(.el-row) {
+    display: flex;
+    flex-direction: column;
+  }
+
+  :deep(.el-col-18),
+  :deep(.el-col-6) {
+    width: 100%;
+    max-width: 100%;
+    flex: 0 0 100%;
+  }
+
+  .post-meta-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .main-box {
+    padding: 24px 18px;
+  }
+}
 </style>

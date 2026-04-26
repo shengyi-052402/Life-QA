@@ -113,6 +113,10 @@ watch(
   border-radius: var(--radius-lg);
 }
 
+.search-header h2 {
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+}
+
 .highlight-text {
   color: var(--primary-color);
 }
@@ -136,8 +140,10 @@ watch(
 }
 
 .post-item:hover {
-  background-color: var(--bg-color);
+  background: linear-gradient(90deg, rgba(77, 216, 255, 0.09), rgba(155, 124, 255, 0.05));
   border-radius: var(--radius-md);
+  padding-left: 18px;
+  padding-right: 18px;
 }
 
 .post-title {

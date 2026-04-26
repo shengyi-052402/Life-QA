@@ -73,6 +73,12 @@ const routes = [
         name: 'Notifications',
         component: () => import('@/views/Notifications.vue'),
         meta: { title: '通知中心', requiresAuth: true }
+      },
+      {
+        path: 'guidelines',
+        name: 'Guidelines',
+        component: () => import('@/views/Guidelines.vue'),
+        meta: { title: '社区规则' }
       }
     ]
   },
@@ -134,7 +140,7 @@ const router = createRouter({
 
 router.beforeEach(async (to, from, next) => {
   if (to.meta.title) {
-    document.title = `${to.meta.title} - 开发者论坛`
+    document.title = `${to.meta.title} - Life Q&A`
   }
 
   const hasToken = getToken()

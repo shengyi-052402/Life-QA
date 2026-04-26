@@ -28,6 +28,12 @@ public class PostUpdateDTO implements Serializable {
     /** 发帖地区名称（可选，如"北京"、"Tokyo"） */
     private String locationName;
 
+    /** 精确地址（可选） */
+    private String address;
+
+    /** Google Place ID（可选） */
+    private String placeId;
+
     /** 纬度（可选） */
     private BigDecimal latitude;
 

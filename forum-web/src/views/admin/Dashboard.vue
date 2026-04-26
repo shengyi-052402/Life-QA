@@ -122,8 +122,9 @@ onMounted(fetchStats)
 
 .stat-card h3 {
   margin: 10px 0 6px;
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
   font-size: 2rem;
-  color: #111827;
+  color: var(--text-primary);
 }
 
 .section-head {
@@ -142,7 +143,8 @@ onMounted(fetchStats)
 .trend-item {
   padding: 18px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid var(--border-color);
 }
 
 .trend-item strong {

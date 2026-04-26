@@ -97,6 +97,40 @@
           </el-col>
         </el-row>
 
+        <el-row :gutter="20">
+          <el-col :span="16">
+            <el-form-item label="精确地址 (可选)">
+              <el-autocomplete
+                v-model="postForm.address"
+                :fetch-suggestions="searchAmapAddress"
+                placeholder="搜索或输入详细地址"
+                size="large"
+                class="w-full"
+                maxlength="255"
+                value-key="value"
+                @select="selectAmapAddress"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="高德 POI ID (可选)">
+              <el-input
+                v-model="postForm.placeId"
+                placeholder="选择地址后自动填充"
+                size="large"
+                maxlength="128"
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <div class="amap-picker">
+          <div v-if="amapAvailable" ref="amapContainerRef" class="amap-container"></div>
+          <div v-else class="amap-fallback">
+            配置 VITE_AMAP_KEY 后可使用地图搜索和点击定位；当前可手动填写地址、经纬度。
+          </div>
+        </div>
+
         <el-form-item prop="content" label="正文">
           <div class="editor-container">
             <Toolbar
@@ -126,7 +160,7 @@
 
 <script setup>
 import '@wangeditor/editor/dist/css/style.css'
-import { onBeforeUnmount, onMounted, reactive, ref, shallowRef } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import { Plus } from '@element-plus/icons-vue'
@@ -135,6 +169,7 @@ import { getCategories } from '@/api/category'
 import { getTags } from '@/api/tag'
 import { getPostEditDetail, updatePost } from '@/api/post'
 import { useUserStore } from '@/stores/user'
+import { hasAmapConfig, loadAmap } from '@/utils/amap'
 
 const route = useRoute()
 const router = useRouter()
@@ -148,6 +183,13 @@ const categories = ref([])
 const allTags = ref([])
 const cityOptions = ref([])
 const citySelection = ref(null)
+const amapContainerRef = ref(null)
+const amapAvailable = ref(hasAmapConfig())
+let AMapApi = null
+let amapMap = null
+let amapMarker = null
+let amapGeocoder = null
+let amapPlaceSearch = null
 let searchCitiesFn = null
 
 async function getSearchCities() {
@@ -166,6 +208,8 @@ const postForm = reactive({
   tagIds: [],
   content: '',
   locationName: null,
+  address: '',
+  placeId: '',
   latitude: null,
   longitude: null
 })
@@ -230,10 +274,132 @@ const onCitySelect = (city) => {
     postForm.latitude = city.lat
     postForm.longitude = city.lng
     postForm.locationName = city.nameZh
+    postForm.address = postForm.address || city.nameZh
+    syncAmapMarker([city.lng, city.lat])
   } else {
     postForm.latitude = null
     postForm.longitude = null
     postForm.locationName = null
+  }
+}
+
+const searchAmapAddress = async (query, callback) => {
+  if (!query?.trim() || !amapPlaceSearch) {
+    callback([])
+    return
+  }
+
+  amapPlaceSearch.search(query.trim(), (status, result) => {
+    if (status !== 'complete') {
+      callback([])
+      return
+    }
+
+    const pois = result?.poiList?.pois || []
+    callback(pois
+      .filter(item => item.location)
+      .slice(0, 8)
+      .map(item => ({
+        value: item.address ? `${item.name} - ${item.address}` : item.name,
+        poi: item
+      })))
+  })
+}
+
+const selectAmapAddress = (item) => {
+  const poi = item?.poi
+  if (!poi?.location) {
+    return
+  }
+
+  const lng = poi.location.lng
+  const lat = poi.location.lat
+  postForm.locationName = poi.cityname || poi.adname || poi.name
+  postForm.address = poi.address ? `${poi.name} - ${poi.address}` : poi.name
+  postForm.placeId = poi.id || ''
+  postForm.longitude = lng
+  postForm.latitude = lat
+  syncAmapMarker([lng, lat])
+}
+
+function syncAmapMarker(position) {
+  if (!AMapApi || !amapMap || !position?.length) {
+    return
+  }
+
+  if (!amapMarker) {
+    amapMarker = new AMapApi.Marker({
+      position,
+      draggable: true
+    })
+    amapMarker.on('dragend', event => applyAmapPosition(event.lnglat))
+    amapMap.add(amapMarker)
+  } else {
+    amapMarker.setPosition(position)
+  }
+
+  amapMap.setCenter(position)
+  amapMap.setZoom(Math.max(amapMap.getZoom(), 15))
+}
+
+function applyAmapPosition(lnglat) {
+  const lng = typeof lnglat.getLng === 'function' ? lnglat.getLng() : lnglat.lng
+  const lat = typeof lnglat.getLat === 'function' ? lnglat.getLat() : lnglat.lat
+  postForm.longitude = lng
+  postForm.latitude = lat
+  syncAmapMarker([lng, lat])
+
+  if (!amapGeocoder) {
+    return
+  }
+
+  amapGeocoder.getAddress([lng, lat], (status, result) => {
+    const regeocode = result?.regeocode
+    if (status !== 'complete' || !regeocode) {
+      return
+    }
+    const addressComponent = regeocode.addressComponent || {}
+    postForm.address = regeocode.formattedAddress || postForm.address
+    postForm.locationName = addressComponent.city || addressComponent.province || addressComponent.district || postForm.locationName
+    postForm.placeId = ''
+  })
+}
+
+async function initAmapPicker() {
+  if (!hasAmapConfig()) {
+    amapAvailable.value = false
+    return
+  }
+
+  try {
+    AMapApi = await loadAmap()
+    await nextTick()
+    if (!amapContainerRef.value) {
+      return
+    }
+
+    const initialPosition = postForm.longitude && postForm.latitude
+      ? [postForm.longitude, postForm.latitude]
+      : [116.397428, 39.90923]
+
+    amapMap = new AMapApi.Map(amapContainerRef.value, {
+      viewMode: '3D',
+      zoom: postForm.longitude && postForm.latitude ? 15 : 4,
+      center: initialPosition
+    })
+    amapMap.addControl(new AMapApi.Scale())
+    amapMap.addControl(new AMapApi.ToolBar())
+    amapMap.on('click', event => applyAmapPosition(event.lnglat))
+
+    amapGeocoder = new AMapApi.Geocoder()
+    amapPlaceSearch = new AMapApi.PlaceSearch({ city: '全国' })
+
+    if (postForm.longitude && postForm.latitude) {
+      syncAmapMarker([postForm.longitude, postForm.latitude])
+    }
+  } catch (error) {
+    console.warn('Amap picker init failed:', error)
+    amapAvailable.value = false
   }
 }
 
@@ -269,8 +435,13 @@ const handleCreated = (editor) => {
 
 onBeforeUnmount(() => {
   const editor = editorRef.value
-  if (editor == null) return
-  editor.destroy()
+  if (editor != null) {
+    editor.destroy()
+  }
+  if (amapMap) {
+    amapMap.destroy()
+    amapMap = null
+  }
 })
 
 async function fillCitySelection(post) {
@@ -312,6 +483,8 @@ async function fetchData() {
     postForm.tagIds = (post.tags || []).map(tag => tag.id)
     postForm.content = post.content
     postForm.locationName = post.locationName
+    postForm.address = post.address || ''
+    postForm.placeId = post.placeId || ''
     postForm.latitude = post.latitude
     postForm.longitude = post.longitude
     await fillCitySelection(post)
@@ -341,6 +514,8 @@ function buildSubmitData() {
     tagIds: finalTagIds,
     newTags: finalNewTags,
     locationName: postForm.locationName || null,
+    address: postForm.address || null,
+    placeId: postForm.placeId || null,
     latitude: postForm.latitude ?? null,
     longitude: postForm.longitude ?? null
   }
@@ -367,8 +542,9 @@ function submitPost() {
   })
 }
 
-onMounted(() => {
-  fetchData()
+onMounted(async () => {
+  await fetchData()
+  initAmapPicker()
 })
 </script>
 
@@ -386,6 +562,7 @@ onMounted(() => {
 
 .page-title {
   margin-bottom: 25px;
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
   font-size: 1.5rem;
   color: var(--text-primary);
 }
@@ -399,6 +576,8 @@ onMounted(() => {
   border-radius: var(--radius-md);
   z-index: 10;
   width: 100%;
+  overflow: hidden;
+  background: rgba(3, 8, 18, 0.72);
 }
 
 .form-actions {
@@ -414,9 +593,32 @@ onMounted(() => {
   letter-spacing: 0.5px;
 }
 
+.amap-picker {
+  margin-bottom: 18px;
+}
+
+.amap-container,
+.amap-fallback {
+  width: 100%;
+  height: 260px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.amap-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  color: var(--text-secondary);
+  background: rgba(3, 8, 18, 0.5);
+  text-align: center;
+}
+
 :deep(.cover-uploader .el-upload) {
   border: 1px dashed var(--border-color);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   position: relative;
   overflow: hidden;
@@ -426,16 +628,19 @@ onMounted(() => {
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: var(--bg-color);
+  background:
+    radial-gradient(circle at 78% 22%, rgba(77, 216, 255, 0.24), transparent 42%),
+    linear-gradient(135deg, rgba(12, 39, 66, 0.9), rgba(37, 18, 86, 0.85));
 }
 
 :deep(.cover-uploader .el-upload:hover) {
   border-color: var(--primary-color);
+  box-shadow: var(--glow-cyan);
 }
 
 .cover-uploader-icon {
   font-size: 28px;
-  color: #8c939d;
+  color: var(--primary-color);
 }
 
 .cover-preview {

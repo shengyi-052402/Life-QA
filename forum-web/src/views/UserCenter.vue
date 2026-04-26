@@ -269,8 +269,9 @@ watch(activeTab, () => {
 .hero-cover {
   height: 160px;
   background:
-    radial-gradient(circle at top left, rgba(255, 179, 71, 0.35), transparent 40%),
-    linear-gradient(135deg, rgba(16, 24, 40, 0.92), rgba(28, 44, 77, 0.88));
+    radial-gradient(circle at 18% 22%, rgba(77, 216, 255, 0.36), transparent 34%),
+    radial-gradient(circle at 78% 30%, rgba(155, 124, 255, 0.28), transparent 34%),
+    linear-gradient(135deg, rgba(3, 8, 18, 0.96), rgba(12, 39, 66, 0.9));
 }
 
 .hero-content {
@@ -282,8 +283,8 @@ watch(activeTab, () => {
 }
 
 .hero-avatar {
-  border: 4px solid rgba(255, 255, 255, 0.92);
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.2);
+  border: 4px solid rgba(77, 216, 255, 0.42);
+  box-shadow: var(--glow-cyan);
 }
 
 .hero-meta {
@@ -299,6 +300,7 @@ watch(activeTab, () => {
 
 .hero-name-row h1 {
   margin: 0;
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
   font-size: 1.9rem;
 }
 
@@ -325,7 +327,8 @@ watch(activeTab, () => {
   min-width: 112px;
   padding: 12px 14px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.58);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-color);
   backdrop-filter: blur(12px);
 }
 
@@ -357,6 +360,14 @@ watch(activeTab, () => {
   padding: 16px 0;
   cursor: pointer;
   border-bottom: 1px solid var(--border-color);
+  transition: var(--transition);
+}
+
+.post-card:hover {
+  padding-left: 14px;
+  padding-right: 14px;
+  border-radius: var(--radius-md);
+  background: rgba(77, 216, 255, 0.07);
 }
 
 .post-card:first-child {
@@ -367,7 +378,9 @@ watch(activeTab, () => {
   height: 116px;
   overflow: hidden;
   border-radius: 16px;
-  background: linear-gradient(135deg, rgba(30, 64, 175, 0.18), rgba(249, 115, 22, 0.18));
+  background:
+    radial-gradient(circle at 78% 22%, rgba(77, 216, 255, 0.24), transparent 42%),
+    linear-gradient(135deg, rgba(12, 39, 66, 0.9), rgba(37, 18, 86, 0.85));
 }
 
 .post-card-cover img {
@@ -436,11 +449,13 @@ watch(activeTab, () => {
 }
 
 .activity-dot.post {
-  background: #2563eb;
+  background: var(--primary-color);
+  box-shadow: var(--glow-cyan);
 }
 
 .activity-dot.comment {
-  background: #f97316;
+  background: var(--accent-color);
+  box-shadow: var(--glow-violet);
 }
 
 .activity-head {
