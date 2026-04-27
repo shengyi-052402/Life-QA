@@ -75,43 +75,6 @@
           </el-button>
         </div>
 
-        <Transition name="map-panel">
-          <div
-            v-if="exactMapVisible"
-            class="exact-map-panel"
-            @wheel.stop
-            @touchmove.stop
-            @mousemove.stop
-          >
-            <div class="exact-map-header">
-              <div>
-                <div class="exact-map-kicker">Precise Map</div>
-                <h3>{{ selectedMapPost?.locationName || '精确地图' }}</h3>
-                <p>{{ selectedMapPost?.address || '查看所有带精确位置的帖子' }}</p>
-              </div>
-              <button class="exact-map-close" type="button" @click="closeExactMap">×</button>
-            </div>
-            <div class="exact-map-body">
-              <div ref="exactMapContainer" class="exact-map-container">
-                <div v-if="exactMapLoading" class="exact-map-loading">加载高德地图...</div>
-              </div>
-              <div class="exact-map-list">
-                <div
-                  v-for="post in globePosts"
-                  :key="post.id"
-                  class="exact-map-list-item"
-                  :class="{ active: selectedMapPost?.id === post.id }"
-                  @click="focusExactMapPost(post)"
-                >
-                  <span>{{ post.locationName || '未知位置' }}</span>
-                  <strong>{{ post.title }}</strong>
-                  <small>{{ post.address || `${post.latitude}, ${post.longitude}` }}</small>
-                </div>
-              </div>
-            </div>
-          </div>
-        </Transition>
-
         <!-- 鼠标悬停预览卡（跟随光标） -->
         <Transition name="popup">
           <div
@@ -152,7 +115,6 @@ import { useUserStore } from '@/stores/user'
 import { getPostPage, getGlobePosts } from '@/api/post'
 import { ElMessage } from 'element-plus'
 import Globe from 'globe.gl'
-import { hasAmapConfig, loadAmap } from '@/utils/amap'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -179,21 +141,9 @@ const globeInstance = shallowRef(null)
 const globeOpacity = ref(0)
 const globePointerEvents = ref('none')
 const globeScale = ref(0.8)
-const globePosts = ref([])
-
 // 帖子悬停预览卡
 const hoveredGlobePost = ref(null)
 const hoverCardPos = reactive({ x: 0, y: 0 })
-
-// 精确地图层
-const exactMapContainer = ref(null)
-const exactMapVisible = ref(false)
-const exactMapLoading = ref(false)
-const selectedMapPost = ref(null)
-let exactAMap = null
-let exactMap = null
-let exactInfoWindow = null
-let exactMarkers = []
 
 // 滚动条变量
 let targetScroll = 0
@@ -236,10 +186,6 @@ onBeforeUnmount(() => {
   if (globeInstance.value) {
     try { globeInstance.value._destructor() } catch(e) {}
   }
-  if (exactMap) {
-    exactMap.destroy()
-    exactMap = null
-  }
 })
 
 const handlePostClick = (postId) => {
@@ -262,108 +208,6 @@ const navigateToPost = (postData) => {
   }
 }
 
-const escapeHtml = (value) => String(value || '')
-  .replaceAll('&', '&amp;')
-  .replaceAll('<', '&lt;')
-  .replaceAll('>', '&gt;')
-  .replaceAll('"', '&quot;')
-  .replaceAll("'", '&#39;')
-
-const getPostPosition = (postData) => [
-  Number(postData.longitude),
-  Number(postData.latitude)
-]
-
-const openExactMap = async (postData) => {
-  if (!postData) return
-  if (!hasAmapConfig()) {
-    ElMessage.warning('未配置高德地图 Key，暂时只能查看帖子详情')
-    navigateToPost(postData)
-    return
-  }
-
-  selectedMapPost.value = postData
-  exactMapVisible.value = true
-  await nextTick()
-  await initExactMap()
-  focusExactMapPost(postData)
-}
-
-const closeExactMap = () => {
-  exactMapVisible.value = false
-}
-
-const initExactMap = async () => {
-  if (exactMap || !exactMapContainer.value) {
-    return
-  }
-
-  exactMapLoading.value = true
-  try {
-    exactAMap = await loadAmap()
-    const center = selectedMapPost.value ? getPostPosition(selectedMapPost.value) : [116.397428, 39.90923]
-    exactMap = new exactAMap.Map(exactMapContainer.value, {
-      viewMode: '3D',
-      zoom: selectedMapPost.value ? 15 : 4,
-      center
-    })
-    exactMap.addControl(new exactAMap.Scale())
-    exactMap.addControl(new exactAMap.ToolBar())
-    exactInfoWindow = new exactAMap.InfoWindow({ offset: new exactAMap.Pixel(0, -28) })
-    renderExactMapMarkers()
-  } catch (error) {
-    console.warn('Exact amap init failed:', error)
-    ElMessage.error('高德地图加载失败')
-    exactMapVisible.value = false
-  } finally {
-    exactMapLoading.value = false
-  }
-}
-
-const renderExactMapMarkers = () => {
-  if (!exactAMap || !exactMap) {
-    return
-  }
-
-  exactMap.remove(exactMarkers)
-  exactMarkers = globePosts.value
-    .filter(post => post.latitude != null && post.longitude != null)
-    .map(post => {
-      const marker = new exactAMap.Marker({
-        position: getPostPosition(post),
-        title: post.title
-      })
-      marker.on('click', () => focusExactMapPost(post, true))
-      return marker
-    })
-
-  if (exactMarkers.length > 0) {
-    exactMap.add(exactMarkers)
-    exactMap.setFitView(exactMarkers, false, [80, 360, 80, 80])
-  }
-}
-
-const focusExactMapPost = (postData, showInfo = false) => {
-  if (!postData || !exactMap) {
-    return
-  }
-
-  selectedMapPost.value = postData
-  const position = getPostPosition(postData)
-  exactMap.setZoomAndCenter(16, position)
-
-  if (exactInfoWindow && (showInfo || exactMapVisible.value)) {
-    exactInfoWindow.setContent(`
-      <div class="exact-info-window">
-        <div class="exact-info-location">${escapeHtml(postData.locationName || '')}</div>
-        <div class="exact-info-title">${escapeHtml(postData.title)}</div>
-        <div class="exact-info-address">${escapeHtml(postData.address || '')}</div>
-      </div>
-    `)
-    exactInfoWindow.open(exactMap, position)
-  }
-}
-
 // 初始化 3D 地球
 const initGlobe = async () => {
   if (!globeContainer.value) return
@@ -373,10 +217,8 @@ const initGlobe = async () => {
   try {
     const res = await getGlobePosts()
     globePostsData = res.data || []
-    globePosts.value = globePostsData
   } catch(e) {
     console.warn('Globe posts fetch failed, globe will have no real data points')
-    globePosts.value = []
   }
 
   // 构建光点数据
@@ -423,7 +265,7 @@ const initGlobe = async () => {
     })
     .onPointClick((point) => {
       if (point && point.postData) {
-        openExactMap(point.postData)
+        navigateToPost(point.postData)
       }
     })
 
@@ -527,9 +369,6 @@ const onTouchMove = (e) => {
 const onResize = () => {
   if (globeInstance.value && globeContainer.value) {
     globeInstance.value.width(window.innerWidth).height(window.innerHeight)
-  }
-  if (exactMap) {
-    exactMap.resize()
   }
 }
 </script>
@@ -762,161 +601,6 @@ const onResize = () => {
   letter-spacing: 1px;
 }
 
-.exact-map-panel {
-  position: absolute;
-  inset: 72px 42px 42px;
-  z-index: 520;
-  display: flex;
-  flex-direction: column;
-  background: rgba(8, 10, 16, 0.94);
-  border: 1px solid rgba(255,255,255,0.14);
-  border-radius: 18px;
-  overflow: hidden;
-  backdrop-filter: blur(24px);
-  box-shadow: 0 28px 90px rgba(0,0,0,0.72);
-}
-
-.exact-map-header {
-  flex: 0 0 auto;
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 20px 22px;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
-}
-
-.exact-map-kicker {
-  color: #60A5FA;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  margin-bottom: 4px;
-}
-
-.exact-map-header h3 {
-  margin: 0;
-  font-size: 1.25rem;
-}
-
-.exact-map-header p {
-  margin: 6px 0 0;
-  color: #9ca3af;
-  font-size: 0.85rem;
-  line-height: 1.5;
-}
-
-.exact-map-close {
-  width: 36px;
-  height: 36px;
-  border: 1px solid rgba(255,255,255,0.16);
-  border-radius: 50%;
-  color: #fff;
-  background: rgba(255,255,255,0.08);
-  cursor: pointer;
-  font-size: 1.5rem;
-  line-height: 1;
-}
-
-.exact-map-close:hover {
-  background: rgba(255,255,255,0.18);
-}
-
-.exact-map-body {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-}
-
-.exact-map-container {
-  position: relative;
-  min-height: 420px;
-  background: #111827;
-}
-
-.exact-map-loading {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #d1d5db;
-  background: rgba(0,0,0,0.45);
-}
-
-.exact-map-list {
-  overflow: auto;
-  padding: 12px;
-  border-left: 1px solid rgba(255,255,255,0.1);
-}
-
-.exact-map-list-item {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 12px;
-  border-radius: 10px;
-  cursor: pointer;
-  color: #d1d5db;
-  transition: background 0.2s, color 0.2s;
-}
-
-.exact-map-list-item:hover,
-.exact-map-list-item.active {
-  background: rgba(96,165,250,0.16);
-  color: #fff;
-}
-
-.exact-map-list-item span {
-  color: #60A5FA;
-  font-size: 0.72rem;
-}
-
-.exact-map-list-item strong {
-  font-size: 0.9rem;
-  line-height: 1.35;
-}
-
-.exact-map-list-item small {
-  color: #8b949e;
-  line-height: 1.35;
-}
-
-:deep(.exact-info-window) {
-  max-width: 240px;
-  line-height: 1.5;
-}
-
-:deep(.exact-info-location) {
-  color: #1677ff;
-  font-size: 12px;
-  margin-bottom: 4px;
-}
-
-:deep(.exact-info-title) {
-  color: #111827;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
-:deep(.exact-info-address) {
-  color: #4b5563;
-  font-size: 12px;
-}
-
-.map-panel-enter-active,
-.map-panel-leave-active {
-  transition: opacity 0.25s ease, transform 0.25s ease;
-}
-
-.map-panel-enter-from,
-.map-panel-leave-to {
-  opacity: 0;
-  transform: scale(0.98) translateY(12px);
-}
-
 /* 帖子悬停预览卡（跟随鼠标，点击跳转） */
 .post-hover-card {
   position: fixed;
@@ -1053,19 +737,4 @@ const onResize = () => {
   to { transform: rotate(360deg); }
 }
 
-@media (max-width: 900px) {
-  .exact-map-panel {
-    inset: 72px 14px 24px;
-  }
-
-  .exact-map-body {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr) 220px;
-  }
-
-  .exact-map-list {
-    border-left: 0;
-    border-top: 1px solid rgba(255,255,255,0.1);
-  }
-}
 </style>
