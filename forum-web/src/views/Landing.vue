@@ -1,5 +1,5 @@
 <template>
-  <div class="landing-container" ref="containerRef" @mousemove="onMouseMove" @wheel.prevent="onWheel" @touchstart="onTouchStart" @touchmove.prevent="onTouchMove">
+  <div class="landing-container" ref="containerRef" @mousemove="onMouseMove" @wheel.prevent.stop="onWheel" @touchstart="onTouchStart" @touchmove.prevent="onTouchMove">
     <header class="landing-header" :class="{ 'is-globe': globeOpacity > 0.5 }">
       <div class="logo">Life Q&A</div>
       <div class="actions">
@@ -67,7 +67,7 @@
         <div ref="globeContainer" class="globe-container"></div>
         
         <!-- 地球的文字覆盖层 -->
-        <div class="globe-overlay" :class="{ 'is-visible': globeOpacity > 0.8 }">
+        <div class="globe-overlay" :class="{ 'is-visible': globeOpacity > 0.05 }">
           <h2>全人类的疑问<br/>都在这里</h2>
           <p>拖拽、缩放，探索来自世界各地的思考</p>
           <el-button color="#fff" style="color: #000; margin-top: 20px;" round size="large" @click="$router.push('/explore')">
@@ -182,6 +182,8 @@ const SCROLL_THRESHOLD_FOR_GLOBE = 2000
 const CLUSTER_DISTANCE_KM = 30
 const CLUSTER_CARD_LIMIT = 5
 const EARTH_RADIUS_KM = 6371
+const GLOBE_MIN_CAMERA_DISTANCE = 150
+const GLOBE_MAX_CAMERA_DISTANCE = 600
 
 // 动画句柄
 let rafId = null
@@ -218,6 +220,28 @@ const placeHoverCard = () => {
     window.innerHeight - cardHeight - margin,
     Math.max(margin, preferredY)
   )
+}
+
+const zoomGlobeByWheel = (deltaY) => {
+  const controls = globeInstance.value?.controls()
+  const camera = controls?.object
+  const target = controls?.target
+  if (!controls || !camera || !target) return
+
+  const offset = camera.position.clone().sub(target)
+  const currentDistance = offset.length()
+  const zoomFactor = Math.exp(Math.min(Math.abs(deltaY), 240) * 0.0025)
+  const nextDistance = deltaY > 0
+    ? currentDistance / zoomFactor
+    : currentDistance * zoomFactor
+  const clampedDistance = Math.max(
+    GLOBE_MIN_CAMERA_DISTANCE,
+    Math.min(GLOBE_MAX_CAMERA_DISTANCE, nextDistance)
+  )
+
+  offset.setLength(clampedDistance)
+  camera.position.copy(target).add(offset)
+  controls.update()
 }
 
 const getGlowTexture = () => {
@@ -502,8 +526,8 @@ const initGlobe = async () => {
   controls.enableZoom = true
   controls.autoRotate = true
   controls.autoRotateSpeed = 0.4
-  controls.minDistance = 150
-  controls.maxDistance = 600
+  controls.minDistance = GLOBE_MIN_CAMERA_DISTANCE
+  controls.maxDistance = GLOBE_MAX_CAMERA_DISTANCE
 
   const globeMaterial = myGlobe.globeMaterial()
   globeMaterial.color = new THREE.Color(0xffffff)
@@ -582,8 +606,11 @@ const onMouseMove = (e) => {
 }
 
 const onWheel = (e) => {
-  // 如果地球已经出现且指针在地球上，让 globe.gl 自己处理缩放
-  if (globeOpacity.value > 0.8) return
+  // 地球阶段反转默认滚轮方向：向下滚动拉近，向上滚动拉远
+  if (globeOpacity.value > 0.8) {
+    zoomGlobeByWheel(e.deltaY)
+    return
+  }
   targetScroll += e.deltaY * 1.5 
   targetScroll = Math.max(0, Math.min(targetScroll, maxScroll))
 }
@@ -812,7 +839,7 @@ const onResize = () => {
   pointer-events: none;
   opacity: 0;
   transform: translateY(-40%);
-  transition: opacity 1s 0.5s ease, transform 1s 0.5s ease;
+  transition: opacity 0.35s ease, transform 0.35s ease;
 }
 .globe-overlay.is-visible {
   opacity: 1;

@@ -174,10 +174,12 @@ function handleSuggestionSelect(item) {
   display: flex;
   align-items: center;
   gap: 18px;
+  min-width: 0;
 }
 
 .search-input {
   width: 250px;
+  flex: 0 1 250px;
 }
 
 .notification-badge :deep(.el-badge__content) {
@@ -203,11 +205,19 @@ function handleSuggestionSelect(item) {
 .user-profile {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   cursor: pointer;
-  padding: 4px 8px;
+  width: 184px;
+  min-width: 144px;
+  max-width: 220px;
+  padding: 6px 12px;
   border-radius: var(--radius-md);
   transition: var(--transition);
+  overflow: hidden;
+}
+
+.user-profile :deep(.el-avatar) {
+  flex: 0 0 auto;
 }
 
 .user-profile:hover {
@@ -217,6 +227,11 @@ function handleSuggestionSelect(item) {
 .username {
   font-size: 0.9rem;
   font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .main-content {
