@@ -78,20 +78,45 @@
         <!-- 鼠标悬停预览卡（跟随光标） -->
         <Transition name="popup">
           <div
-            v-if="hoveredGlobePost"
+            v-if="hoveredGlobeMarker"
             class="post-hover-card"
+            :class="{ 'is-cluster': hoveredGlobeMarker.isCluster }"
             :style="{ top: hoverCardPos.y + 'px', left: hoverCardPos.x + 'px' }"
-            @click="navigateToPost(hoveredGlobePost)"
+            @click="handleHoverCardClick"
+            @mouseenter="onHoverCardEnter"
+            @mouseleave="onHoverCardLeave"
           >
             <img
-              :src="hoveredGlobePost.coverImage || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=400'"
+              v-if="!hoveredGlobeMarker.isCluster"
+              :src="hoveredGlobeMarker.postData.coverImage || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=400'"
               class="hover-card-cover"
             />
             <div class="hover-card-body">
-              <div class="hover-card-location">📍 {{ hoveredGlobePost.locationName }}</div>
-              <div class="hover-card-title">{{ hoveredGlobePost.title }}</div>
-              <div class="hover-card-author">@{{ hoveredGlobePost.authorNickname }}</div>
-              <div class="hover-card-hint">点击查看全文 →</div>
+              <template v-if="hoveredGlobeMarker.isCluster">
+                <div class="hover-card-location">📍 {{ hoveredGlobeMarker.locationName || '附近位置' }}</div>
+                <div class="cluster-title">共 {{ hoveredGlobeMarker.count }} 篇帖子</div>
+                <div class="cluster-post-list">
+                  <button
+                    v-for="post in hoveredGlobeMarker.posts.slice(0, CLUSTER_CARD_LIMIT)"
+                    :key="post.id"
+                    class="cluster-post-item"
+                    type="button"
+                    @click.stop="navigateToPost(post)"
+                  >
+                    <span class="cluster-post-title">{{ post.title }}</span>
+                    <span class="cluster-post-author">@{{ post.authorNickname }}</span>
+                  </button>
+                </div>
+                <div v-if="hoveredGlobeMarker.count > CLUSTER_CARD_LIMIT" class="cluster-more">
+                  还有 {{ hoveredGlobeMarker.count - CLUSTER_CARD_LIMIT }} 篇
+                </div>
+              </template>
+              <template v-else>
+                <div class="hover-card-location">📍 {{ hoveredGlobeMarker.postData.locationName }}</div>
+              <div class="hover-card-title">{{ hoveredGlobeMarker.postData.title }}</div>
+              <div class="hover-card-author">@{{ hoveredGlobeMarker.postData.authorNickname }}</div>
+                <div class="hover-card-hint">点击查看全文 →</div>
+              </template>
             </div>
           </div>
         </Transition>
@@ -115,6 +140,7 @@ import { useUserStore } from '@/stores/user'
 import { getPostPage, getGlobePosts } from '@/api/post'
 import { ElMessage } from 'element-plus'
 import Globe from 'globe.gl'
+import * as THREE from 'three'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -142,17 +168,160 @@ const globeOpacity = ref(0)
 const globePointerEvents = ref('none')
 const globeScale = ref(0.8)
 // 帖子悬停预览卡
-const hoveredGlobePost = ref(null)
+const hoveredGlobeMarker = ref(null)
 const hoverCardPos = reactive({ x: 0, y: 0 })
+const lastPointerPos = reactive({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
+let isHoverCardActive = false
+let hoverCardCloseTimer = null
 
 // 滚动条变量
 let targetScroll = 0
 let currentScroll = 0
 let maxScroll = 1000
 const SCROLL_THRESHOLD_FOR_GLOBE = 2000
+const CLUSTER_DISTANCE_KM = 30
+const CLUSTER_CARD_LIMIT = 5
+const EARTH_RADIUS_KM = 6371
 
 // 动画句柄
 let rafId = null
+let glowTexture = null
+
+const cancelHoverCardClose = () => {
+  if (!hoverCardCloseTimer) return
+  clearTimeout(hoverCardCloseTimer)
+  hoverCardCloseTimer = null
+}
+
+const scheduleHoverCardClose = () => {
+  cancelHoverCardClose()
+  hoverCardCloseTimer = setTimeout(() => {
+    if (!isHoverCardActive) {
+      hoveredGlobeMarker.value = null
+      hoverCardCloseTimer = null
+    }
+  }, 260)
+}
+
+const placeHoverCard = () => {
+  const cardWidth = 300
+  const cardHeight = 260
+  const margin = 16
+  const preferredX = lastPointerPos.x + 20
+  const preferredY = lastPointerPos.y - 80
+
+  hoverCardPos.x = Math.min(
+    window.innerWidth - cardWidth - margin,
+    Math.max(margin, preferredX)
+  )
+  hoverCardPos.y = Math.min(
+    window.innerHeight - cardHeight - margin,
+    Math.max(margin, preferredY)
+  )
+}
+
+const getGlowTexture = () => {
+  if (glowTexture) return glowTexture
+
+  const canvas = document.createElement('canvas')
+  canvas.width = 128
+  canvas.height = 128
+  const ctx = canvas.getContext('2d')
+  const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64)
+  gradient.addColorStop(0, 'rgba(255, 255, 255, 1)')
+  gradient.addColorStop(0.18, 'rgba(255, 235, 170, 0.95)')
+  gradient.addColorStop(0.42, 'rgba(78, 179, 255, 0.35)')
+  gradient.addColorStop(1, 'rgba(78, 179, 255, 0)')
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, 128, 128)
+
+  glowTexture = new THREE.CanvasTexture(canvas)
+  glowTexture.colorSpace = THREE.SRGBColorSpace
+  return glowTexture
+}
+
+const toRadians = (degrees) => degrees * Math.PI / 180
+
+const getDistanceKm = (pointA, pointB) => {
+  const latDistance = toRadians(pointB.lat - pointA.lat)
+  const lngDistance = toRadians(pointB.lng - pointA.lng)
+  const latA = toRadians(pointA.lat)
+  const latB = toRadians(pointB.lat)
+  const a = Math.sin(latDistance / 2) ** 2
+    + Math.cos(latA) * Math.cos(latB) * Math.sin(lngDistance / 2) ** 2
+  return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+const buildPostMarker = (post) => ({
+  lat: parseFloat(post.latitude),
+  lng: parseFloat(post.longitude),
+  size: 0.5 + Math.min(2, (post.likeCount || 0) / 10) * 0.5,
+  color: '#7DD3FC',
+  isCluster: false,
+  postData: post,
+  posts: [post],
+  count: 1,
+  locationName: post.locationName
+})
+
+const buildClusterMarkers = (postMarkers) => {
+  const clusters = []
+
+  postMarkers
+    .filter(marker => Number.isFinite(marker.lat) && Number.isFinite(marker.lng))
+    .forEach((marker) => {
+      const cluster = clusters.find(item => getDistanceKm(item, marker) <= CLUSTER_DISTANCE_KM)
+      if (cluster) {
+        cluster.posts.push(marker.postData)
+        cluster.lat = cluster.posts.reduce((sum, post) => sum + parseFloat(post.latitude), 0) / cluster.posts.length
+        cluster.lng = cluster.posts.reduce((sum, post) => sum + parseFloat(post.longitude), 0) / cluster.posts.length
+        cluster.count = cluster.posts.length
+        cluster.size = Math.min(2.4, 0.9 + Math.log2(cluster.count + 1) * 0.45)
+        cluster.color = '#FDE68A'
+        cluster.isCluster = true
+        cluster.postData = null
+      } else {
+        clusters.push({ ...marker })
+      }
+    })
+
+  return clusters.map(marker => {
+    if (marker.count > 1) {
+      return {
+        ...marker,
+        isCluster: true,
+        color: '#FDE68A',
+        locationName: marker.posts[0]?.locationName || marker.locationName,
+        primaryPost: marker.posts[0],
+        postData: null
+      }
+    }
+    return marker
+  })
+}
+
+const getCountTexture = (count) => {
+  const canvas = document.createElement('canvas')
+  canvas.width = 128
+  canvas.height = 128
+  const ctx = canvas.getContext('2d')
+  ctx.fillStyle = 'rgba(8, 12, 20, 0.92)'
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.86)'
+  ctx.lineWidth = 6
+  ctx.beginPath()
+  ctx.arc(64, 64, 42, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.stroke()
+  ctx.fillStyle = '#ffffff'
+  ctx.font = '700 42px Space Grotesk, Arial, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(String(count), 64, 66)
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
+}
 
 const fetchPosts = async () => {
   loading.value = true
@@ -182,6 +351,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (rafId) cancelAnimationFrame(rafId)
+  cancelHoverCardClose()
   window.removeEventListener('resize', onResize)
   if (globeInstance.value) {
     try { globeInstance.value._destructor() } catch(e) {}
@@ -208,6 +378,21 @@ const navigateToPost = (postData) => {
   }
 }
 
+const handleHoverCardClick = () => {
+  if (!hoveredGlobeMarker.value || hoveredGlobeMarker.value.isCluster) return
+  navigateToPost(hoveredGlobeMarker.value.postData)
+}
+
+const onHoverCardEnter = () => {
+  isHoverCardActive = true
+  cancelHoverCardClose()
+}
+
+const onHoverCardLeave = () => {
+  isHoverCardActive = false
+  scheduleHoverCardClose()
+}
+
 // 初始化 3D 地球
 const initGlobe = async () => {
   if (!globeContainer.value) return
@@ -222,49 +407,92 @@ const initGlobe = async () => {
   }
 
   // 构建光点数据
-  const pointsData = globePostsData.map(p => ({
-    lat: parseFloat(p.latitude),
-    lng: parseFloat(p.longitude),
-    size: 0.5 + Math.min(2, (p.likeCount || 0) / 10) * 0.5,
-    color: '#60A5FA',
-    postData: p
-  }))
+  let pointsData = buildClusterMarkers(globePostsData.map(buildPostMarker))
 
   // 如果没有真实数据，放几个演示光点
   if (pointsData.length === 0) {
     pointsData.push(
-      { lat: 39.9, lng: 116.4, size: 0.8, color: '#60A5FA', postData: null },
-      { lat: 35.6, lng: 139.6, size: 0.7, color: '#60A5FA', postData: null },
-      { lat: 51.5, lng: -0.1, size: 0.6, color: '#60A5FA', postData: null },
-      { lat: 40.7, lng: -74.0, size: 0.9, color: '#F59E0B', postData: null },
-      { lat: -33.8, lng: 151.2, size: 0.5, color: '#60A5FA', postData: null },
+      { lat: 39.9, lng: 116.4, size: 0.8, color: '#7DD3FC', isCluster: false, count: 1, posts: [], postData: null },
+      { lat: 35.6, lng: 139.6, size: 0.7, color: '#7DD3FC', isCluster: false, count: 1, posts: [], postData: null },
+      { lat: 51.5, lng: -0.1, size: 0.6, color: '#7DD3FC', isCluster: false, count: 1, posts: [], postData: null },
+      { lat: 40.7, lng: -74.0, size: 0.9, color: '#FDE68A', isCluster: false, count: 1, posts: [], postData: null },
+      { lat: -33.8, lng: 151.2, size: 0.5, color: '#7DD3FC', isCluster: false, count: 1, posts: [], postData: null },
     )
   }
 
   const myGlobe = Globe()(globeContainer.value)
-    .globeImageUrl('//unpkg.com/three-globe/example/img/earth-dark.jpg')
+    .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
     .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
     .backgroundImageUrl('//unpkg.com/three-globe/example/img/night-sky.png')
-    .pointsData(pointsData)
-    .pointLat('lat')
-    .pointLng('lng')
-    .pointColor('color')
-    .pointRadius('size')
-    .pointAltitude(0.01)
-    .pointLabel(() => '') // 禁用内置 label，用自定义 hover 卡
-    .onPointHover((point, prevPoint) => {
+    .showAtmosphere(true)
+    .atmosphereColor('#9DDCFF')
+    .atmosphereAltitude(0.18)
+    .ringsData(pointsData)
+    .ringLat('lat')
+    .ringLng('lng')
+    .ringAltitude(0.006)
+    .ringColor(d => [
+      `${d.color}00`,
+      `${d.color}B8`,
+      `${d.color}55`,
+      `${d.color}00`
+    ])
+    .ringMaxRadius(d => 1.4 + d.size * 1.7)
+    .ringPropagationSpeed(d => 0.55 + d.size * 0.2)
+    .ringRepeatPeriod(d => 1600 + d.size * 360)
+    .customLayerData(pointsData)
+    .customThreeObject(d => {
+      const group = new THREE.Group()
+      const glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: getGlowTexture(),
+        color: new THREE.Color(d.color),
+        transparent: true,
+        opacity: 0.95,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      }))
+      const scale = 3.2 + d.size * 2.4
+      glowSprite.scale.set(scale, scale, 1)
+      group.add(glowSprite)
+
+      if (d.isCluster) {
+        const countSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: getCountTexture(d.count),
+          transparent: true,
+          depthWrite: false
+        }))
+        countSprite.scale.set(2.4, 2.4, 1)
+        countSprite.position.set(scale * 0.28, scale * 0.28, 0.2)
+        group.add(countSprite)
+      }
+
+      group.userData.pointData = d
+      return group
+    })
+    .customThreeObjectUpdate((obj, d) => {
+      const coords = myGlobe.getCoords(d.lat, d.lng, 0.018)
+      Object.assign(obj.position, coords)
+      obj.userData.pointData = d
+    })
+    .customLayerLabel(() => '')
+    .onCustomLayerHover((point) => {
       const controls = myGlobe.controls()
-      if (point && point.postData) {
-        hoveredGlobePost.value = point.postData
+      if (point && (point.postData || point.isCluster)) {
+        cancelHoverCardClose()
+        placeHoverCard()
+        hoveredGlobeMarker.value = point
         controls.autoRotateSpeed = 0 // 悬停光点时停止转动
-        // 游标位置由全局 mousemove 更新
       } else {
-        hoveredGlobePost.value = null
+        scheduleHoverCardClose()
         controls.autoRotateSpeed = 0.4 // 移开时光点恢复转动
       }
     })
-    .onPointClick((point) => {
-      if (point && point.postData) {
+    .onCustomLayerClick((point) => {
+      if (point?.isCluster) {
+        cancelHoverCardClose()
+        placeHoverCard()
+        hoveredGlobeMarker.value = point
+      } else if (point && point.postData) {
         navigateToPost(point.postData)
       }
     })
@@ -276,6 +504,11 @@ const initGlobe = async () => {
   controls.autoRotateSpeed = 0.4
   controls.minDistance = 150
   controls.maxDistance = 600
+
+  const globeMaterial = myGlobe.globeMaterial()
+  globeMaterial.color = new THREE.Color(0xffffff)
+  globeMaterial.bumpScale = 4
+  globeMaterial.shininess = 0.18
 
   globeInstance.value = myGlobe
   
@@ -344,9 +577,8 @@ const startRenderLoop = () => {
 const onMouseMove = (e) => {
   mouseX.value = (e.clientX / window.innerWidth) * 2 - 1
   mouseY.value = (e.clientY / window.innerHeight) * 2 - 1
-  // 悬停卡跟随光标（偏移避免遮住光点）
-  hoverCardPos.x = e.clientX + 20
-  hoverCardPos.y = e.clientY - 80
+  lastPointerPos.x = e.clientX
+  lastPointerPos.y = e.clientY
 }
 
 const onWheel = (e) => {
@@ -619,6 +851,10 @@ const onResize = () => {
 .post-hover-card:hover {
   box-shadow: 0 24px 70px rgba(0,0,0,0.95), 0 0 0 2px rgba(96,165,250,0.5);
 }
+.post-hover-card.is-cluster {
+  width: 300px;
+  cursor: default;
+}
 
 .hover-card-cover {
   width: 100%;
@@ -665,6 +901,58 @@ const onResize = () => {
   font-weight: 600;
   color: #60A5FA;
   letter-spacing: 0.5px;
+}
+
+.cluster-title {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 10px;
+}
+
+.cluster-post-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cluster-post-item {
+  width: 100%;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.05);
+  color: #fff;
+  cursor: pointer;
+  padding: 8px 10px;
+  text-align: left;
+  transition: border-color 0.2s, background 0.2s;
+}
+.cluster-post-item:hover {
+  background: rgba(125,211,252,0.12);
+  border-color: rgba(125,211,252,0.45);
+}
+
+.cluster-post-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.cluster-post-author {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.68rem;
+  color: #8a8a8a;
+}
+
+.cluster-more {
+  margin-top: 9px;
+  font-size: 0.72rem;
+  color: #FDE68A;
 }
 
 /* Popup 动画 */
