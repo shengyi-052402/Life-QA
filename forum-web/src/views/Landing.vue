@@ -42,7 +42,12 @@
           @mouseleave="hoveredIndex = null"
         >
           <div class="card-inner" :class="{ 'is-hovered': hoveredIndex === index }">
-            <img :src="post.coverImage || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop'" alt="Cover" class="cover-img" />
+            <img
+              :src="post.coverImage || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop'"
+              alt="Cover"
+              class="cover-img"
+              @load="event => handleCoverLoad(event, index)"
+            />
             <div class="card-info">
               <h2 class="title">{{ post.title }}</h2>
               <p class="summary">{{ post.summary }}</p>
@@ -151,6 +156,7 @@ const loading = ref(true)
 
 // 3D 卡片场景状态
 const cardRefs = ref([])
+const cardRatios = ref([])
 const hoveredIndex = ref(null)
 const sceneOpacity = ref(1)
 const scenePointerEvents = ref('auto')
@@ -184,6 +190,21 @@ const CLUSTER_CARD_LIMIT = 5
 const EARTH_RADIUS_KM = 6371
 const GLOBE_MIN_CAMERA_DISTANCE = 150
 const GLOBE_MAX_CAMERA_DISTANCE = 600
+const CARD_BASE_AREA = 240000
+const CARD_MIN_WIDTH = 340
+const CARD_MAX_WIDTH = 560
+const CARD_MIN_HEIGHT = 380
+const CARD_MAX_HEIGHT = 680
+const CARD_POSITIONS = [
+  { x: -420, y: -210, ry: 14 },
+  { x: 360, y: 190, ry: -12 },
+  { x: 120, y: -260, ry: -6 },
+  { x: -330, y: 170, ry: 11 },
+  { x: 430, y: -120, ry: -14 },
+  { x: -90, y: 250, ry: 5 },
+  { x: -520, y: 20, ry: 16 },
+  { x: 520, y: 40, ry: -16 }
+]
 
 // 动画句柄
 let rafId = null
@@ -391,6 +412,25 @@ const handlePostClick = (postId) => {
   }
 }
 
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
+
+const getCardSize = (index) => {
+  const ratio = clamp(cardRatios.value[index] || 0.72, 0.55, 1.55)
+  let width = Math.sqrt(CARD_BASE_AREA * ratio)
+  let height = width / ratio
+
+  width = clamp(width, CARD_MIN_WIDTH, CARD_MAX_WIDTH)
+  height = clamp(height, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT)
+
+  return { width, height }
+}
+
+const handleCoverLoad = (event, index) => {
+  const image = event.target
+  if (!image?.naturalWidth || !image?.naturalHeight) return
+  cardRatios.value[index] = image.naturalWidth / image.naturalHeight
+}
+
 // 地球光点点击跳转（需登录）
 const navigateToPost = (postData) => {
   if (!postData) return
@@ -576,14 +616,20 @@ const startRenderLoop = () => {
     if (!card) return
     const cardZBase = -(index * 800)
     let currentZ = cardZBase + currentScroll
-    const offsetX = (index % 2 === 0 ? 1 : -1) * 350 + (index % 3) * 50
-    const offsetY = (index % 2 === 0 ? -1 : 1) * 150
+    const position = CARD_POSITIONS[index % CARD_POSITIONS.length]
+    const cycle = Math.floor(index / CARD_POSITIONS.length)
+    const offsetX = position.x + Math.sin(index * 1.7) * 42 + cycle * 18
+    const offsetY = position.y + Math.cos(index * 1.3) * 34 + cycle * 12
+    const rotateY = position.ry + Math.sin(index * 0.9) * 4
+    const { width, height } = getCardSize(index)
 
     let opacity = 1
     if (currentZ > 400) opacity = Math.max(0, 1 - (currentZ - 400) / 200)
     if (currentZ < -3000) opacity = Math.max(0, 1 - Math.abs(currentZ + 3000) / 4000)
 
-    card.style.transform = `translate3d(${offsetX}px, ${offsetY}px, ${currentZ}px) rotateY(${index % 2===0 ? -10 : 10}deg)`
+    card.style.width = `${width}px`
+    card.style.height = `${height}px`
+    card.style.transform = `translate3d(${offsetX - width / 2}px, ${offsetY - height / 2}px, ${currentZ}px) rotateY(${rotateY}deg)`
     card.style.opacity = opacity
 
     if (currentZ > -200 && currentZ < 200 && scenePointerEvents.value === 'auto') {
@@ -720,8 +766,6 @@ const onResize = () => {
   position: absolute;
   top: 50%;
   left: 50%;
-  margin-top: -250px;
-  margin-left: -180px;
   width: 360px;
   height: 500px;
   cursor: pointer;
@@ -748,13 +792,14 @@ const onResize = () => {
 .cover-img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
+  background: #050505;
   opacity: 0.6;
-  transition: opacity 0.4s, transform 0.6s;
+  transition: opacity 0.4s;
 }
 .card-wrapper:hover .cover-img {
   opacity: 0.3;
-  transform: scale(1.1);
 }
 
 .card-info {
@@ -886,7 +931,9 @@ const onResize = () => {
 .hover-card-cover {
   width: 100%;
   height: 130px;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
+  background: #050505;
   opacity: 0.75;
   display: block;
   transition: opacity 0.3s;
