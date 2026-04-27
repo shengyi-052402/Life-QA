@@ -1,10 +1,10 @@
 <template>
   <div class="landing-container" ref="containerRef" @mousemove="onMouseMove" @wheel.prevent.stop="onWheel" @touchstart="onTouchStart" @touchmove.prevent="onTouchMove">
     <header class="landing-header" :class="{ 'is-globe': globeOpacity > 0.5 }">
-      <div class="logo">Life Q&A</div>
+      <div class="logo">Life-Q&A</div>
       <div class="actions">
         <template v-if="userStore.token">
-          <el-button color="#fff" style="color: #000" round @click="$router.push('/explore')">进入论坛</el-button>
+          <el-button color="#fff" style="color: #000" round @click="$router.push('/explore')">进入 Life-Q&A</el-button>
           <div class="user-profile" @click="$router.push(`/user/${userStore.userInfo?.id}`)">
             <el-avatar :size="36" :src="userStore.userInfo?.avatar || 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'" />
           </div>

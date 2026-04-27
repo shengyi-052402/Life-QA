@@ -3,7 +3,7 @@
     <el-header class="glass-panel main-header">
       <div class="header-content">
         <div class="logo" @click="$router.push('/')">
-          <span class="text-gradient">开发者论坛</span>
+          <span class="text-gradient">Life-Q&A</span>
         </div>
 
         <div class="header-right">
@@ -58,7 +58,7 @@
     </el-main>
 
     <el-footer class="main-footer">
-      <p>&copy; 2026 开发者论坛 - By Vue 3 & Spring Boot 3</p>
+      <p>&copy; 2026 Life-Q&A - By Vue 3 & Spring Boot 3</p>
     </el-footer>
   </el-container>
 </template>

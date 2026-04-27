@@ -128,7 +128,7 @@ async function fetchDetail() {
   try {
     const res = await getPostDetail(postId)
     post.value = res.data
-    document.title = `${post.value.title} - Life Q&A`
+    document.title = `${post.value.title} - Life-Q&A`
   } finally {
     loading.value = false
   }

@@ -5,7 +5,7 @@
       <aside class="admin-sidebar glass-panel">
         <div class="brand" @click="router.push('/admin')">
           <p class="brand-eyebrow">Console</p>
-          <h2>Life Q&A</h2>
+          <h2>Life-Q&A</h2>
         </div>
 
         <el-menu
@@ -36,7 +36,7 @@
         </el-menu>
 
         <div class="sidebar-footer">
-          <el-button round @click="router.push('/explore')">返回星图</el-button>
+          <el-button round @click="router.push('/explore')">返回 Life-Q&A</el-button>
         </div>
       </aside>
 

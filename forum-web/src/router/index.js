@@ -140,7 +140,7 @@ const router = createRouter({
 
 router.beforeEach(async (to, from, next) => {
   if (to.meta.title) {
-    document.title = `${to.meta.title} - Life Q&A`
+    document.title = `${to.meta.title} - Life-Q&A`
   }
 
   const hasToken = getToken()

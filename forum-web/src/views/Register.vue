@@ -2,7 +2,7 @@
   <div class="register-container">
     <div class="register-box glass-panel">
       <div class="register-header">
-        <span class="auth-kicker">Life Q&A</span>
+        <span class="auth-kicker">Life-Q&A</span>
         <h2 class="text-gradient">创建你的问答坐标</h2>
         <p>注册账号，发布问题、收藏灵感、加入讨论</p>
       </div>

@@ -2,8 +2,8 @@
   <div class="login-container">
     <div class="login-box glass-panel">
       <div class="login-header">
-        <span class="auth-kicker">Life Q&A</span>
-        <h2 class="text-gradient">欢迎回到问答星图</h2>
+        <span class="auth-kicker">Life-Q&A</span>
+        <h2 class="text-gradient">欢迎回到 Life-Q&A</h2>
         <p>登录后继续探索来自全球的思考与答案</p>
       </div>
       
