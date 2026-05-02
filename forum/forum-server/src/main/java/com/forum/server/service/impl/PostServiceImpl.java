@@ -72,7 +72,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
 
         Post post = Post.builder()
                 .title(dto.getTitle())
-                .content(dto.getContent())
+                .content(HtmlUtil.cleanRichText(dto.getContent()))
                 .summary(dto.getSummary())
                 .coverImage(dto.getCoverImage())
                 .userId(userId)
@@ -137,7 +137,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         }
 
         post.setTitle(dto.getTitle());
-        post.setContent(dto.getContent());
+        post.setContent(HtmlUtil.cleanRichText(dto.getContent()));
         post.setSummary(dto.getSummary());
         post.setCoverImage(dto.getCoverImage());
         post.setCategoryId(dto.getCategoryId());

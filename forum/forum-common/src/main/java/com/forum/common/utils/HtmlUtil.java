@@ -1,15 +1,27 @@
 package com.forum.common.utils;
 
 import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.safety.Safelist;
 
 /**
- * HTML 工具类 - 清除HTML标签，提取纯文本
- * 主要用于 ES 搜索索引和帖子摘要生成
+ * HTML utility methods for plain-text extraction and safe rich text storage.
  */
 public class HtmlUtil {
+    private static final Safelist RICH_TEXT_SAFELIST = Safelist.relaxed()
+            .addTags("pre", "code", "span", "hr", "s")
+            .addAttributes("a", "target", "rel")
+            .addAttributes("img", "width", "height", "alt")
+            .addEnforcedAttribute("a", "rel", "noopener noreferrer")
+            .removeProtocols("a", "href", "ftp")
+            .addProtocols("a", "href", "http", "https", "mailto")
+            .addProtocols("img", "src", "http", "https");
+
+    private static final Document.OutputSettings OUTPUT_SETTINGS = new Document.OutputSettings()
+            .prettyPrint(false);
 
     /**
-     * 去除HTML标签，返回纯文本
+     * Remove HTML tags and return plain text.
      */
     public static String removeHtmlTags(String html) {
         if (html == null || html.isEmpty()) {
@@ -19,11 +31,7 @@ public class HtmlUtil {
     }
 
     /**
-     * 截取摘要 (去除HTML标签后截取前N个字符)
-     *
-     * @param html   HTML内容
-     * @param length 截取长度
-     * @return 摘要文本
+     * Build a summary from the plain-text version of HTML content.
      */
     public static String getSummary(String html, int length) {
         String text = removeHtmlTags(html);
@@ -34,13 +42,19 @@ public class HtmlUtil {
     }
 
     /**
-     * 清理恶意HTML标签，防止 XSS 攻击
+     * Remove all HTML and keep only text. Suitable for plain-text fields.
      */
     public static String clean(String html) {
+        return removeHtmlTags(html);
+    }
+
+    /**
+     * Sanitize rich text before storing or rendering it with v-html.
+     */
+    public static String cleanRichText(String html) {
         if (html == null || html.isEmpty()) {
             return "";
         }
-        // 使用 Jsoup 内置的 Safelist 进行安全过滤，移除所有的危险脚本
-        return Jsoup.clean(html, org.jsoup.safety.Safelist.none());
+        return Jsoup.clean(html, "", RICH_TEXT_SAFELIST, OUTPUT_SETTINGS);
     }
 }

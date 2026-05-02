@@ -21,10 +21,6 @@ CREATE TABLE IF NOT EXISTS `user` (
   UNIQUE KEY `uk_email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表';
 
--- 插入默认管理员账号 (admin / 123456)
-INSERT INTO `user` (`username`, `email`, `password`, `nickname`, `role`, `status`) 
-VALUES ('admin', 'admin@forum.com', '$2a$10$Rz2QOfY/O01C7aL9m241Y.YdGDBQ7x.0MGEj12bO88hG0YV8GzQJ2', '管理员', 1, 1)
-ON DUPLICATE KEY UPDATE id=id;
 
 -- 分类表
 CREATE TABLE IF NOT EXISTS `category` (

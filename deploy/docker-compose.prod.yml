@@ -6,8 +6,8 @@ services:
     environment:
       MYSQL_DATABASE: forum
       MYSQL_USER: forum
-      MYSQL_PASSWORD: change-me
-      MYSQL_ROOT_PASSWORD: root-change-me
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in deploy/.env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in deploy/.env}
       TZ: Asia/Shanghai
     ports:
       - '3306:3306'
@@ -44,14 +44,19 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SERVER_PORT: 8080
-      JWT_SECRET: change-me-to-a-random-secret-at-least-32-characters
-      JWT_EXPIRATION: 86400000
-      CORS_ALLOWED_ORIGIN_PATTERNS: http://localhost
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in deploy/.env}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS:?Set CORS_ALLOWED_ORIGIN_PATTERNS in deploy/.env}
       DB_URL: jdbc:mysql://mysql:3306/forum?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&useSSL=false&allowPublicKeyRetrieval=true
       DB_USERNAME: forum
-      DB_PASSWORD: change-me
-      ES_URIS: http://elasticsearch:9200
-      FORUM_SEARCH_ES_ENABLED: 'true'
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in deploy/.env}
+      OSS_ENDPOINT: ${OSS_ENDPOINT:?Set OSS_ENDPOINT in deploy/.env}
+      OSS_ACCESS_KEY_ID: ${OSS_ACCESS_KEY_ID:?Set OSS_ACCESS_KEY_ID in deploy/.env}
+      OSS_ACCESS_KEY_SECRET: ${OSS_ACCESS_KEY_SECRET:?Set OSS_ACCESS_KEY_SECRET in deploy/.env}
+      OSS_BUCKET_NAME: ${OSS_BUCKET_NAME:?Set OSS_BUCKET_NAME in deploy/.env}
+      OSS_DOMAIN: ${OSS_DOMAIN:?Set OSS_DOMAIN in deploy/.env}
+      ES_URIS: ${ES_URIS:-http://elasticsearch:9200}
+      FORUM_SEARCH_ES_ENABLED: ${FORUM_SEARCH_ES_ENABLED:-true}
       KNIFE4J_ENABLE: 'false'
     ports:
       - '8080:8080'
