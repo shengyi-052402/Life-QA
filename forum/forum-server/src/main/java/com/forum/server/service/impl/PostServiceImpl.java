@@ -38,6 +38,8 @@ import com.forum.server.service.PostService;
 import com.forum.server.service.SearchService;
 import com.forum.server.service.TagService;
 import com.forum.server.service.UserService;
+import com.forum.server.service.cache.PostDetailCacheService;
+import com.forum.server.service.cache.PostInteractionCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
@@ -64,6 +66,8 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
     private final PostLikeMapper postLikeMapper;
     private final FavoriteMapper favoriteMapper;
     private final CommentMapper commentMapper;
+    private final PostDetailCacheService postDetailCacheService;
+    private final PostInteractionCacheService postInteractionCacheService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -151,6 +155,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         postTagMapper.delete(new LambdaQueryWrapper<PostTag>().eq(PostTag::getPostId, post.getId()));
         decrementTagCounts(oldTagIds);
         handleTags(post.getId(), dto.getTagIds(), dto.getNewTags());
+        postDetailCacheService.evict(post.getId());
         searchService.syncPost(post.getId());
     }
 
@@ -183,37 +188,54 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         postLikeMapper.delete(new LambdaQueryWrapper<PostLike>().eq(PostLike::getPostId, id));
         favoriteMapper.delete(new LambdaQueryWrapper<Favorite>().eq(Favorite::getPostId, id));
         commentMapper.delete(new LambdaQueryWrapper<Comment>().eq(Comment::getPostId, id));
+        postDetailCacheService.evict(id);
+        postInteractionCacheService.evictPostLike(id);
+        postInteractionCacheService.evictPostFavorite(id);
         searchService.deletePost(id);
     }
 
     @Override
     public PostDetailVO getPostDetail(Long id) {
+        baseMapper.incrementViewCount(id);
+
+        PostDetailVO cached = postDetailCacheService.get(id).orElse(null);
+        if (cached != null) {
+            cached.setViewCount((cached.getViewCount() == null ? 0 : cached.getViewCount()) + 1);
+            postDetailCacheService.put(id, cached);
+            fillInteractionStatus(cached, id);
+            return cached;
+        }
+
         Post post = getById(id);
         if (post == null || post.getStatus() != 1) {
+            postDetailCacheService.evict(id);
             throw new BaseException(MessageConstant.POST_NOT_FOUND);
         }
 
-        baseMapper.incrementViewCount(id);
         post.setViewCount((post.getViewCount() == null ? 0 : post.getViewCount()) + 1);
         PostDetailVO vo = buildPostDetailVO(post);
-
         vo.setIsLiked(false);
         vo.setIsFavorited(false);
+        postDetailCacheService.put(id, vo);
+        fillInteractionStatus(vo, id);
+        return vo;
+    }
 
+    private void fillInteractionStatus(PostDetailVO vo, Long postId) {
+        vo.setIsLiked(false);
+        vo.setIsFavorited(false);
         Long currentUserId = BaseContext.getCurrentId();
         if (currentUserId != null) {
             long liked = postLikeMapper.selectCount(new LambdaQueryWrapper<PostLike>()
-                    .eq(PostLike::getPostId, id)
+                    .eq(PostLike::getPostId, postId)
                     .eq(PostLike::getUserId, currentUserId));
             vo.setIsLiked(liked > 0);
 
             long favorited = favoriteMapper.selectCount(new LambdaQueryWrapper<Favorite>()
-                    .eq(Favorite::getPostId, id)
+                    .eq(Favorite::getPostId, postId)
                     .eq(Favorite::getUserId, currentUserId));
             vo.setIsFavorited(favorited > 0);
         }
-
-        return vo;
     }
 
     @Override
@@ -375,6 +397,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
             post.setIsEssence(dto.getIsEssence());
         }
         updateById(post);
+        postDetailCacheService.evict(id);
         if (post.getStatus() != null && post.getStatus() == 1) {
             searchService.syncPost(id);
         } else {

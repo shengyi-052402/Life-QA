@@ -7,6 +7,7 @@ forum-web/dist/
 
 # ========== IDE 文件 ==========
 .idea/
+.claude/
 *.iml
 .vscode/
 *.suo

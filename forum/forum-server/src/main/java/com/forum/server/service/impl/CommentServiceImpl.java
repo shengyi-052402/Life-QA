@@ -27,6 +27,7 @@ import com.forum.server.service.CommentService;
 import com.forum.server.service.NotificationService;
 import com.forum.server.service.SearchService;
 import com.forum.server.service.UserService;
+import com.forum.server.service.cache.PostDetailCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
@@ -47,6 +48,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
     private final CommentLikeMapper commentLikeMapper;
     private final NotificationService notificationService;
     private final SearchService searchService;
+    private final PostDetailCacheService postDetailCacheService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -81,6 +83,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
 
         post.setCommentCount(post.getCommentCount() + 1);
         postMapper.updateById(post);
+        postDetailCacheService.evict(dto.getPostId());
 
         if (dto.getParentId() != 0L && dto.getReplyToUserId() != null) {
             notificationService.createNotification(
@@ -127,6 +130,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         if (post != null) {
             post.setCommentCount(Math.max(0, post.getCommentCount() - 1));
             postMapper.updateById(post);
+            postDetailCacheService.evict(post.getId());
             searchService.syncPost(post.getId());
         }
     }

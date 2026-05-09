@@ -15,9 +15,15 @@ import com.forum.server.mapper.PostLikeMapper;
 import com.forum.server.mapper.PostMapper;
 import com.forum.server.service.InteractionService;
 import com.forum.server.service.NotificationService;
+import com.forum.server.service.cache.PostDetailCacheService;
+import com.forum.server.service.cache.PostInteractionCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -29,13 +35,50 @@ public class InteractionServiceImpl implements InteractionService {
     private final CommentLikeMapper commentLikeMapper;
     private final FavoriteMapper favoriteMapper;
     private final NotificationService notificationService;
+    private final PostDetailCacheService postDetailCacheService;
+    private final PostInteractionCacheService postInteractionCacheService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean togglePostLike(Long postId) {
         Long userId = BaseContext.getCurrentId();
         Post post = checkPost(postId);
+        ensurePostLikeCacheInitialized(postId);
 
+        Optional<PostInteractionCacheService.ToggleResult> cacheResult =
+                postInteractionCacheService.togglePostLike(postId, userId);
+        if (cacheResult.isPresent()) {
+            return syncPostLikeByCacheResult(post, userId, cacheResult.get());
+        }
+
+        // Redis is an acceleration layer here. If it is unavailable, keep the user action working with the DB path.
+        return togglePostLikeByDatabase(post, userId);
+    }
+
+    private boolean syncPostLikeByCacheResult(Post post, Long userId, PostInteractionCacheService.ToggleResult result) {
+        Long postId = post.getId();
+        LambdaQueryWrapper<PostLike> wrapper = new LambdaQueryWrapper<PostLike>()
+                .eq(PostLike::getPostId, postId)
+                .eq(PostLike::getUserId, userId);
+
+        if (result.isActive()) {
+            if (postLikeMapper.selectCount(wrapper) == 0) {
+                postLikeMapper.insert(PostLike.builder().postId(postId).userId(userId).build());
+            }
+            updatePostLikeCount(post, result.getCount());
+            postDetailCacheService.evict(postId);
+            notificationService.createNotification(post.getUserId(), userId, "post_like", postId, null, "liked your post");
+            return true;
+        }
+
+        postLikeMapper.delete(wrapper);
+        updatePostLikeCount(post, result.getCount());
+        postDetailCacheService.evict(postId);
+        return false;
+    }
+
+    private boolean togglePostLikeByDatabase(Post post, Long userId) {
+        Long postId = post.getId();
         LambdaQueryWrapper<PostLike> wrapper = new LambdaQueryWrapper<PostLike>()
                 .eq(PostLike::getPostId, postId)
                 .eq(PostLike::getUserId, userId);
@@ -45,14 +88,16 @@ public class InteractionServiceImpl implements InteractionService {
             postLikeMapper.insert(PostLike.builder().postId(postId).userId(userId).build());
             post.setLikeCount(post.getLikeCount() + 1);
             postMapper.updateById(post);
-            notificationService.createNotification(post.getUserId(), userId, "post_like", postId, null, "赞了你的帖子");
+            postDetailCacheService.evict(postId);
+            notificationService.createNotification(post.getUserId(), userId, "post_like", postId, null, "liked your post");
             return true;
-        } else {
-            postLikeMapper.delete(wrapper);
-            post.setLikeCount(Math.max(0, post.getLikeCount() - 1));
-            postMapper.updateById(post);
-            return false;
         }
+
+        postLikeMapper.delete(wrapper);
+        post.setLikeCount(Math.max(0, post.getLikeCount() - 1));
+        postMapper.updateById(post);
+        postDetailCacheService.evict(postId);
+        return false;
     }
 
     @Override
@@ -65,19 +110,26 @@ public class InteractionServiceImpl implements InteractionService {
                 .eq(CommentLike::getCommentId, commentId)
                 .eq(CommentLike::getUserId, userId);
 
+        Post post = postMapper.selectById(comment.getPostId());
         CommentLike exist = commentLikeMapper.selectOne(wrapper);
         if (exist == null) {
             commentLikeMapper.insert(CommentLike.builder().commentId(commentId).userId(userId).build());
             comment.setLikeCount(comment.getLikeCount() + 1);
             commentMapper.updateById(comment);
-            notificationService.createNotification(comment.getUserId(), userId, "comment_like", comment.getPostId(), commentId, "赞了你的评论");
+            if (post != null) {
+                postDetailCacheService.evict(post.getId());
+            }
+            notificationService.createNotification(comment.getUserId(), userId, "comment_like", comment.getPostId(), commentId, "liked your comment");
             return true;
-        } else {
-            commentLikeMapper.delete(wrapper);
-            comment.setLikeCount(Math.max(0, comment.getLikeCount() - 1));
-            commentMapper.updateById(comment);
-            return false;
         }
+
+        commentLikeMapper.delete(wrapper);
+        comment.setLikeCount(Math.max(0, comment.getLikeCount() - 1));
+        commentMapper.updateById(comment);
+        if (post != null) {
+            postDetailCacheService.evict(post.getId());
+        }
+        return false;
     }
 
     @Override
@@ -85,7 +137,42 @@ public class InteractionServiceImpl implements InteractionService {
     public boolean togglePostFavorite(Long postId) {
         Long userId = BaseContext.getCurrentId();
         Post post = checkPost(postId);
+        ensurePostFavoriteCacheInitialized(postId);
 
+        Optional<PostInteractionCacheService.ToggleResult> cacheResult =
+                postInteractionCacheService.togglePostFavorite(postId, userId);
+        if (cacheResult.isPresent()) {
+            return syncPostFavoriteByCacheResult(post, userId, cacheResult.get());
+        }
+
+        // The favorite table primary key still protects idempotency when Redis falls back.
+        return togglePostFavoriteByDatabase(post, userId);
+    }
+
+    private boolean syncPostFavoriteByCacheResult(Post post, Long userId, PostInteractionCacheService.ToggleResult result) {
+        Long postId = post.getId();
+        LambdaQueryWrapper<Favorite> wrapper = new LambdaQueryWrapper<Favorite>()
+                .eq(Favorite::getPostId, postId)
+                .eq(Favorite::getUserId, userId);
+
+        if (result.isActive()) {
+            if (favoriteMapper.selectCount(wrapper) == 0) {
+                favoriteMapper.insert(Favorite.builder().postId(postId).userId(userId).build());
+            }
+            updatePostFavoriteCount(post, result.getCount());
+            postDetailCacheService.evict(postId);
+            notificationService.createNotification(post.getUserId(), userId, "post_favorite", postId, null, "favorited your post");
+            return true;
+        }
+
+        favoriteMapper.delete(wrapper);
+        updatePostFavoriteCount(post, result.getCount());
+        postDetailCacheService.evict(postId);
+        return false;
+    }
+
+    private boolean togglePostFavoriteByDatabase(Post post, Long userId) {
+        Long postId = post.getId();
         LambdaQueryWrapper<Favorite> wrapper = new LambdaQueryWrapper<Favorite>()
                 .eq(Favorite::getPostId, postId)
                 .eq(Favorite::getUserId, userId);
@@ -95,20 +182,60 @@ public class InteractionServiceImpl implements InteractionService {
             favoriteMapper.insert(Favorite.builder().postId(postId).userId(userId).build());
             post.setFavoriteCount(post.getFavoriteCount() + 1);
             postMapper.updateById(post);
-            notificationService.createNotification(post.getUserId(), userId, "post_favorite", postId, null, "收藏了你的帖子");
+            postDetailCacheService.evict(postId);
+            notificationService.createNotification(post.getUserId(), userId, "post_favorite", postId, null, "favorited your post");
             return true;
-        } else {
-            favoriteMapper.delete(wrapper);
-            post.setFavoriteCount(Math.max(0, post.getFavoriteCount() - 1));
-            postMapper.updateById(post);
-            return false;
         }
+
+        favoriteMapper.delete(wrapper);
+        post.setFavoriteCount(Math.max(0, post.getFavoriteCount() - 1));
+        postMapper.updateById(post);
+        postDetailCacheService.evict(postId);
+        return false;
+    }
+
+    private void ensurePostLikeCacheInitialized(Long postId) {
+        if (postInteractionCacheService.isPostLikeInitialized(postId)) {
+            return;
+        }
+
+        // Redis Set stores users who liked this post. The first access rebuilds it from MySQL.
+        List<Long> userIds = postLikeMapper.selectList(new LambdaQueryWrapper<PostLike>()
+                        .eq(PostLike::getPostId, postId))
+                .stream()
+                .map(PostLike::getUserId)
+                .collect(Collectors.toList());
+        postInteractionCacheService.initializePostLikeUsers(postId, userIds);
+    }
+
+    private void ensurePostFavoriteCacheInitialized(Long postId) {
+        if (postInteractionCacheService.isPostFavoriteInitialized(postId)) {
+            return;
+        }
+
+        // Favorites use the same Set model as likes, so toggle and count stay O(1) in Redis.
+        List<Long> userIds = favoriteMapper.selectList(new LambdaQueryWrapper<Favorite>()
+                        .eq(Favorite::getPostId, postId))
+                .stream()
+                .map(Favorite::getUserId)
+                .collect(Collectors.toList());
+        postInteractionCacheService.initializePostFavoriteUsers(postId, userIds);
+    }
+
+    private void updatePostLikeCount(Post post, long count) {
+        post.setLikeCount((int) Math.max(0, count));
+        postMapper.updateById(post);
+    }
+
+    private void updatePostFavoriteCount(Post post, long count) {
+        post.setFavoriteCount((int) Math.max(0, count));
+        postMapper.updateById(post);
     }
 
     private Post checkPost(Long postId) {
         Post post = postMapper.selectById(postId);
         if (post == null || post.getStatus() != 1) {
-            throw new BaseException("帖子不存在或已被隐藏");
+            throw new BaseException("Post does not exist or is hidden");
         }
         return post;
     }
@@ -116,7 +243,7 @@ public class InteractionServiceImpl implements InteractionService {
     private Comment checkComment(Long commentId) {
         Comment comment = commentMapper.selectById(commentId);
         if (comment == null || comment.getStatus() != 1) {
-            throw new BaseException("评论不存在");
+            throw new BaseException("Comment does not exist");
         }
         return comment;
     }

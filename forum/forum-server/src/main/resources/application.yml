@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
 
 spring:
   profiles:
@@ -13,6 +13,13 @@ spring:
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: GMT+8
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      timeout: ${REDIS_TIMEOUT:2s}
 
 mybatis-plus:
   mapper-locations: classpath:mapper/*.xml
@@ -31,8 +38,11 @@ forum:
       expiration: ${JWT_EXPIRATION:86400000}
   cors:
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173}
+  cache:
+    post-detail-ttl-seconds: ${POST_DETAIL_CACHE_TTL_SECONDS:600}
+    post-detail-ttl-jitter-seconds: ${POST_DETAIL_CACHE_TTL_JITTER_SECONDS:120}
 knife4j:
-  enable: true
+  enable: ${KNIFE4J_ENABLE:true}
   openapi:
     title: Life-Q&A API 文档
     description: Life-Q&A 接口文档
