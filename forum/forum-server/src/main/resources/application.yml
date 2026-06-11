@@ -38,8 +38,6 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         spring.json.trusted.packages: com.forum.server.messaging.event
-        spring.json.value.default.type: com.forum.server.messaging.event.NotificationEvent
-        spring.json.use.type.headers: false
     listener:
       missing-topics-fatal: false
 
@@ -72,6 +70,7 @@ forum:
     topics:
       notification: ${FORUM_NOTIFICATION_TOPIC:forum.notification.events}
       search-index: ${FORUM_SEARCH_INDEX_TOPIC:forum.search-index.events}
+      post-cache-invalidation: ${FORUM_POST_CACHE_INVALIDATION_TOPIC:forum.post-cache-invalidation.events}
 knife4j:
   enable: ${KNIFE4J_ENABLE:true}
   openapi:

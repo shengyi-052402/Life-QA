@@ -14,8 +14,8 @@ import com.forum.server.mapper.FavoriteMapper;
 import com.forum.server.mapper.PostLikeMapper;
 import com.forum.server.mapper.PostMapper;
 import com.forum.server.messaging.NotificationEventPublisher;
+import com.forum.server.messaging.PostCacheInvalidationEventPublisher;
 import com.forum.server.service.InteractionService;
-import com.forum.server.service.cache.PostDetailCacheService;
 import com.forum.server.service.cache.PostInteractionCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -35,7 +35,7 @@ public class InteractionServiceImpl implements InteractionService {
     private final CommentLikeMapper commentLikeMapper;
     private final FavoriteMapper favoriteMapper;
     private final NotificationEventPublisher notificationEventPublisher;
-    private final PostDetailCacheService postDetailCacheService;
+    private final PostCacheInvalidationEventPublisher postCacheInvalidationEventPublisher;
     private final PostInteractionCacheService postInteractionCacheService;
 
     @Override
@@ -66,14 +66,14 @@ public class InteractionServiceImpl implements InteractionService {
                 postLikeMapper.insert(PostLike.builder().postId(postId).userId(userId).build());
             }
             updatePostLikeCount(post, result.getCount());
-            postDetailCacheService.evict(postId);
+            postCacheInvalidationEventPublisher.publishEvictDetail(postId);
             notificationEventPublisher.publish(post.getUserId(), userId, "post_like", postId, null, "liked your post");
             return true;
         }
 
         postLikeMapper.delete(wrapper);
         updatePostLikeCount(post, result.getCount());
-        postDetailCacheService.evict(postId);
+        postCacheInvalidationEventPublisher.publishEvictDetail(postId);
         return false;
     }
 
@@ -88,7 +88,7 @@ public class InteractionServiceImpl implements InteractionService {
             postLikeMapper.insert(PostLike.builder().postId(postId).userId(userId).build());
             post.setLikeCount(post.getLikeCount() + 1);
             postMapper.updateById(post);
-            postDetailCacheService.evict(postId);
+            postCacheInvalidationEventPublisher.publishEvictDetail(postId);
             notificationEventPublisher.publish(post.getUserId(), userId, "post_like", postId, null, "liked your post");
             return true;
         }
@@ -96,7 +96,7 @@ public class InteractionServiceImpl implements InteractionService {
         postLikeMapper.delete(wrapper);
         post.setLikeCount(Math.max(0, post.getLikeCount() - 1));
         postMapper.updateById(post);
-        postDetailCacheService.evict(postId);
+        postCacheInvalidationEventPublisher.publishEvictDetail(postId);
         return false;
     }
 
@@ -117,7 +117,7 @@ public class InteractionServiceImpl implements InteractionService {
             comment.setLikeCount(comment.getLikeCount() + 1);
             commentMapper.updateById(comment);
             if (post != null) {
-                postDetailCacheService.evict(post.getId());
+                postCacheInvalidationEventPublisher.publishEvictDetail(post.getId());
             }
             notificationEventPublisher.publish(comment.getUserId(), userId, "comment_like", comment.getPostId(), commentId, "liked your comment");
             return true;
@@ -127,7 +127,7 @@ public class InteractionServiceImpl implements InteractionService {
         comment.setLikeCount(Math.max(0, comment.getLikeCount() - 1));
         commentMapper.updateById(comment);
         if (post != null) {
-            postDetailCacheService.evict(post.getId());
+            postCacheInvalidationEventPublisher.publishEvictDetail(post.getId());
         }
         return false;
     }
@@ -160,14 +160,14 @@ public class InteractionServiceImpl implements InteractionService {
                 favoriteMapper.insert(Favorite.builder().postId(postId).userId(userId).build());
             }
             updatePostFavoriteCount(post, result.getCount());
-            postDetailCacheService.evict(postId);
+            postCacheInvalidationEventPublisher.publishEvictDetail(postId);
             notificationEventPublisher.publish(post.getUserId(), userId, "post_favorite", postId, null, "favorited your post");
             return true;
         }
 
         favoriteMapper.delete(wrapper);
         updatePostFavoriteCount(post, result.getCount());
-        postDetailCacheService.evict(postId);
+        postCacheInvalidationEventPublisher.publishEvictDetail(postId);
         return false;
     }
 
@@ -182,7 +182,7 @@ public class InteractionServiceImpl implements InteractionService {
             favoriteMapper.insert(Favorite.builder().postId(postId).userId(userId).build());
             post.setFavoriteCount(post.getFavoriteCount() + 1);
             postMapper.updateById(post);
-            postDetailCacheService.evict(postId);
+            postCacheInvalidationEventPublisher.publishEvictDetail(postId);
             notificationEventPublisher.publish(post.getUserId(), userId, "post_favorite", postId, null, "favorited your post");
             return true;
         }
@@ -190,7 +190,7 @@ public class InteractionServiceImpl implements InteractionService {
         favoriteMapper.delete(wrapper);
         post.setFavoriteCount(Math.max(0, post.getFavoriteCount() - 1));
         postMapper.updateById(post);
-        postDetailCacheService.evict(postId);
+        postCacheInvalidationEventPublisher.publishEvictDetail(postId);
         return false;
     }
 

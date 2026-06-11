@@ -33,6 +33,7 @@ import com.forum.server.mapper.FavoriteMapper;
 import com.forum.server.mapper.PostLikeMapper;
 import com.forum.server.mapper.PostMapper;
 import com.forum.server.mapper.PostTagMapper;
+import com.forum.server.messaging.PostCacheInvalidationEventPublisher;
 import com.forum.server.service.CategoryService;
 import com.forum.server.service.PostService;
 import com.forum.server.service.SearchService;
@@ -40,7 +41,6 @@ import com.forum.server.service.TagService;
 import com.forum.server.service.UserService;
 import com.forum.server.service.cache.PostBloomFilterService;
 import com.forum.server.service.cache.PostDetailCacheService;
-import com.forum.server.service.cache.PostInteractionCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
@@ -70,7 +70,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
     private final CommentMapper commentMapper;
     private final PostBloomFilterService postBloomFilterService;
     private final PostDetailCacheService postDetailCacheService;
-    private final PostInteractionCacheService postInteractionCacheService;
+    private final PostCacheInvalidationEventPublisher postCacheInvalidationEventPublisher;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -159,7 +159,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         postTagMapper.delete(new LambdaQueryWrapper<PostTag>().eq(PostTag::getPostId, post.getId()));
         decrementTagCounts(oldTagIds);
         handleTags(post.getId(), dto.getTagIds(), dto.getNewTags());
-        postDetailCacheService.evict(post.getId());
+        postCacheInvalidationEventPublisher.publishEvictDetail(post.getId());
         searchService.syncPost(post.getId());
     }
 
@@ -192,9 +192,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         postLikeMapper.delete(new LambdaQueryWrapper<PostLike>().eq(PostLike::getPostId, id));
         favoriteMapper.delete(new LambdaQueryWrapper<Favorite>().eq(Favorite::getPostId, id));
         commentMapper.delete(new LambdaQueryWrapper<Comment>().eq(Comment::getPostId, id));
-        postDetailCacheService.evict(id);
-        postInteractionCacheService.evictPostLike(id);
-        postInteractionCacheService.evictPostFavorite(id);
+        postCacheInvalidationEventPublisher.publishEvictAll(id);
         searchService.deletePost(id);
     }
 
@@ -446,7 +444,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         if (post.getStatus() != null && post.getStatus() == 1) {
             postBloomFilterService.add(id);
         }
-        postDetailCacheService.evict(id);
+        postCacheInvalidationEventPublisher.publishEvictDetail(id);
         if (post.getStatus() != null && post.getStatus() == 1) {
             searchService.syncPost(id);
         } else {
