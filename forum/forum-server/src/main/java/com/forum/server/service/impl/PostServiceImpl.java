@@ -38,6 +38,7 @@ import com.forum.server.service.PostService;
 import com.forum.server.service.SearchService;
 import com.forum.server.service.TagService;
 import com.forum.server.service.UserService;
+import com.forum.server.service.cache.PostBloomFilterService;
 import com.forum.server.service.cache.PostDetailCacheService;
 import com.forum.server.service.cache.PostInteractionCacheService;
 import lombok.RequiredArgsConstructor;
@@ -49,6 +50,7 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -66,6 +68,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
     private final PostLikeMapper postLikeMapper;
     private final FavoriteMapper favoriteMapper;
     private final CommentMapper commentMapper;
+    private final PostBloomFilterService postBloomFilterService;
     private final PostDetailCacheService postDetailCacheService;
     private final PostInteractionCacheService postInteractionCacheService;
 
@@ -111,6 +114,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         }
 
         handleTags(postId, dto.getTagIds(), dto.getNewTags());
+        postBloomFilterService.add(postId);
         searchService.syncPost(postId);
         return postId;
     }
@@ -196,12 +200,22 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
 
     @Override
     public PostDetailVO getPostDetail(Long id) {
+        // 布隆过滤器如果判断“一定不存在”，直接返回不存在，避免无效 ID 穿透 Redis 打到 MySQL。
+        // 如果判断“可能存在”，仍然走原来的缓存和数据库逻辑；因为布隆过滤器允许少量误判。
+        if (!postBloomFilterService.mightContain(id)) {
+            throw new BaseException(MessageConstant.POST_NOT_FOUND);
+        }
+
         baseMapper.incrementViewCount(id);
 
-        PostDetailVO cached = postDetailCacheService.get(id).orElse(null);
-        if (cached != null) {
+        PostDetailCacheService.CacheResult cacheResult = postDetailCacheService.get(id);
+        if (cacheResult.hit()) {
+            PostDetailVO cached = cacheResult.getPostDetail();
             cached.setViewCount((cached.getViewCount() == null ? 0 : cached.getViewCount()) + 1);
-            postDetailCacheService.put(id, cached);
+            if (cacheResult.isExpired()) {
+                // 逻辑过期后先返回旧缓存，后台只放一个请求去查库重建，避免热点 key 击穿。
+                rebuildPostDetailCacheAsync(id);
+            }
             fillInteractionStatus(cached, id);
             return cached;
         }
@@ -219,6 +233,38 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         postDetailCacheService.put(id, vo);
         fillInteractionStatus(vo, id);
         return vo;
+    }
+
+    private void rebuildPostDetailCacheAsync(Long id) {
+        if (!postDetailCacheService.tryLockRebuild(id)) {
+            return;
+        }
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                rebuildPostDetailCache(id);
+            } finally {
+                postDetailCacheService.unlockRebuild(id);
+            }
+        });
+    }
+
+    private void rebuildPostDetailCache(Long id) {
+        try {
+            Post post = getById(id);
+            if (post == null || post.getStatus() != 1) {
+                postDetailCacheService.evict(id);
+                return;
+            }
+
+            PostDetailVO vo = buildPostDetailVO(post);
+            vo.setIsLiked(false);
+            vo.setIsFavorited(false);
+            postDetailCacheService.put(id, vo);
+        } catch (Exception e) {
+            postDetailCacheService.evict(id);
+            throw e;
+        }
     }
 
     private void fillInteractionStatus(PostDetailVO vo, Long postId) {
@@ -397,6 +443,9 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
             post.setIsEssence(dto.getIsEssence());
         }
         updateById(post);
+        if (post.getStatus() != null && post.getStatus() == 1) {
+            postBloomFilterService.add(id);
+        }
         postDetailCacheService.evict(id);
         if (post.getStatus() != null && post.getStatus() == 1) {
             searchService.syncPost(id);

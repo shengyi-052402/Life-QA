@@ -23,8 +23,8 @@ import com.forum.pojo.vo.UserVO;
 import com.forum.server.mapper.CommentLikeMapper;
 import com.forum.server.mapper.CommentMapper;
 import com.forum.server.mapper.PostMapper;
+import com.forum.server.messaging.NotificationEventPublisher;
 import com.forum.server.service.CommentService;
-import com.forum.server.service.NotificationService;
 import com.forum.server.service.SearchService;
 import com.forum.server.service.UserService;
 import com.forum.server.service.cache.PostDetailCacheService;
@@ -46,7 +46,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
     private final UserService userService;
     private final PostMapper postMapper;
     private final CommentLikeMapper commentLikeMapper;
-    private final NotificationService notificationService;
+    private final NotificationEventPublisher notificationEventPublisher;
     private final SearchService searchService;
     private final PostDetailCacheService postDetailCacheService;
 
@@ -86,7 +86,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         postDetailCacheService.evict(dto.getPostId());
 
         if (dto.getParentId() != 0L && dto.getReplyToUserId() != null) {
-            notificationService.createNotification(
+            notificationEventPublisher.publish(
                     dto.getReplyToUserId(),
                     userId,
                     "comment_reply",
@@ -95,7 +95,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
                     "回复了你的评论"
             );
         } else {
-            notificationService.createNotification(
+            notificationEventPublisher.publish(
                     post.getUserId(),
                     userId,
                     "post_comment",

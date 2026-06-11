@@ -13,8 +13,8 @@ import com.forum.server.mapper.CommentMapper;
 import com.forum.server.mapper.FavoriteMapper;
 import com.forum.server.mapper.PostLikeMapper;
 import com.forum.server.mapper.PostMapper;
+import com.forum.server.messaging.NotificationEventPublisher;
 import com.forum.server.service.InteractionService;
-import com.forum.server.service.NotificationService;
 import com.forum.server.service.cache.PostDetailCacheService;
 import com.forum.server.service.cache.PostInteractionCacheService;
 import lombok.RequiredArgsConstructor;
@@ -34,7 +34,7 @@ public class InteractionServiceImpl implements InteractionService {
     private final PostLikeMapper postLikeMapper;
     private final CommentLikeMapper commentLikeMapper;
     private final FavoriteMapper favoriteMapper;
-    private final NotificationService notificationService;
+    private final NotificationEventPublisher notificationEventPublisher;
     private final PostDetailCacheService postDetailCacheService;
     private final PostInteractionCacheService postInteractionCacheService;
 
@@ -67,7 +67,7 @@ public class InteractionServiceImpl implements InteractionService {
             }
             updatePostLikeCount(post, result.getCount());
             postDetailCacheService.evict(postId);
-            notificationService.createNotification(post.getUserId(), userId, "post_like", postId, null, "liked your post");
+            notificationEventPublisher.publish(post.getUserId(), userId, "post_like", postId, null, "liked your post");
             return true;
         }
 
@@ -89,7 +89,7 @@ public class InteractionServiceImpl implements InteractionService {
             post.setLikeCount(post.getLikeCount() + 1);
             postMapper.updateById(post);
             postDetailCacheService.evict(postId);
-            notificationService.createNotification(post.getUserId(), userId, "post_like", postId, null, "liked your post");
+            notificationEventPublisher.publish(post.getUserId(), userId, "post_like", postId, null, "liked your post");
             return true;
         }
 
@@ -119,7 +119,7 @@ public class InteractionServiceImpl implements InteractionService {
             if (post != null) {
                 postDetailCacheService.evict(post.getId());
             }
-            notificationService.createNotification(comment.getUserId(), userId, "comment_like", comment.getPostId(), commentId, "liked your comment");
+            notificationEventPublisher.publish(comment.getUserId(), userId, "comment_like", comment.getPostId(), commentId, "liked your comment");
             return true;
         }
 
@@ -161,7 +161,7 @@ public class InteractionServiceImpl implements InteractionService {
             }
             updatePostFavoriteCount(post, result.getCount());
             postDetailCacheService.evict(postId);
-            notificationService.createNotification(post.getUserId(), userId, "post_favorite", postId, null, "favorited your post");
+            notificationEventPublisher.publish(post.getUserId(), userId, "post_favorite", postId, null, "favorited your post");
             return true;
         }
 
@@ -183,7 +183,7 @@ public class InteractionServiceImpl implements InteractionService {
             post.setFavoriteCount(post.getFavoriteCount() + 1);
             postMapper.updateById(post);
             postDetailCacheService.evict(postId);
-            notificationService.createNotification(post.getUserId(), userId, "post_favorite", postId, null, "favorited your post");
+            notificationEventPublisher.publish(post.getUserId(), userId, "post_favorite", postId, null, "favorited your post");
             return true;
         }
 

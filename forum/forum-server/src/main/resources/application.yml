@@ -20,6 +20,28 @@ spring:
       password: ${REDIS_PASSWORD:}
       database: ${REDIS_DATABASE:0}
       timeout: ${REDIS_TIMEOUT:2s}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      properties:
+        max.block.ms: ${KAFKA_MAX_BLOCK_MS:1000}
+        request.timeout.ms: ${KAFKA_REQUEST_TIMEOUT_MS:2000}
+        delivery.timeout.ms: ${KAFKA_DELIVERY_TIMEOUT_MS:3000}
+    consumer:
+      group-id: ${KAFKA_NOTIFICATION_GROUP_ID:forum-notification-consumer}
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: com.forum.server.messaging.event
+        spring.json.value.default.type: com.forum.server.messaging.event.NotificationEvent
+        spring.json.use.type.headers: false
+    listener:
+      missing-topics-fatal: false
 
 mybatis-plus:
   mapper-locations: classpath:mapper/*.xml
@@ -41,6 +63,15 @@ forum:
   cache:
     post-detail-ttl-seconds: ${POST_DETAIL_CACHE_TTL_SECONDS:600}
     post-detail-ttl-jitter-seconds: ${POST_DETAIL_CACHE_TTL_JITTER_SECONDS:120}
+    post-detail-stale-retain-seconds: ${POST_DETAIL_STALE_RETAIN_SECONDS:300}
+    post-detail-rebuild-lock-seconds: ${POST_DETAIL_REBUILD_LOCK_SECONDS:10}
+    post-bloom-filter-key: ${POST_BLOOM_FILTER_KEY:forum:post:bloom}
+    post-bloom-filter-bit-size: ${POST_BLOOM_FILTER_BIT_SIZE:1048576}
+    post-bloom-filter-hash-count: ${POST_BLOOM_FILTER_HASH_COUNT:7}
+  kafka:
+    topics:
+      notification: ${FORUM_NOTIFICATION_TOPIC:forum.notification.events}
+      search-index: ${FORUM_SEARCH_INDEX_TOPIC:forum.search-index.events}
 knife4j:
   enable: ${KNIFE4J_ENABLE:true}
   openapi:

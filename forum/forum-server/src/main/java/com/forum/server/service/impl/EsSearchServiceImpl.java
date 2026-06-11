@@ -11,6 +11,8 @@ import co.elastic.clients.elasticsearch.core.search.Hit;
 import com.forum.common.result.PageResult;
 import com.forum.pojo.es.PostDocument;
 import com.forum.pojo.vo.PostListVO;
+import com.forum.server.messaging.SearchIndexEventPublisher;
+import com.forum.server.service.SearchIndexWriter;
 import com.forum.server.service.SearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,12 +34,13 @@ import java.util.stream.Collectors;
 @Slf4j
 @RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "forum.search.es", name = "enabled", havingValue = "true")
-public class EsSearchServiceImpl implements SearchService {
+public class EsSearchServiceImpl implements SearchService, SearchIndexWriter {
     private static final String HIGHLIGHT_PRE_TAG = "<em>";
     private static final String HIGHLIGHT_POST_TAG = "</em>";
 
     private final ElasticsearchClient elasticsearchClient;
     private final SearchSupport searchSupport;
+    private final SearchIndexEventPublisher searchIndexEventPublisher;
 
     @Value("${forum.search.es.index-name:forum_posts}")
     private String indexName;
@@ -150,11 +153,21 @@ public class EsSearchServiceImpl implements SearchService {
 
     @Override
     public void syncPost(Long postId) {
+        searchIndexEventPublisher.publishSync(postId);
+    }
+
+    @Override
+    public void deletePost(Long postId) {
+        searchIndexEventPublisher.publishDelete(postId);
+    }
+
+    @Override
+    public void syncPostIndex(Long postId) {
         try {
             PostDocument document = searchSupport.buildDocument(postId);
             ensureIndex();
             if (document == null) {
-                deletePost(postId);
+                deletePostIndex(postId);
                 return;
             }
             IndexRequest<PostDocument> request = IndexRequest.of(i -> i
@@ -168,7 +181,7 @@ public class EsSearchServiceImpl implements SearchService {
     }
 
     @Override
-    public void deletePost(Long postId) {
+    public void deletePostIndex(Long postId) {
         try {
             ensureIndex();
             DeleteRequest request = DeleteRequest.of(d -> d.index(indexName).id(String.valueOf(postId)));

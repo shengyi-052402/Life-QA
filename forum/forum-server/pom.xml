@@ -39,6 +39,12 @@
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
 
+        <!-- Kafka keeps side effects such as notifications outside the main request path. -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+
         <!-- Elasticsearch -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

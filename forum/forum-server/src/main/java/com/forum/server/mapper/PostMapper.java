@@ -16,4 +16,10 @@ public interface PostMapper extends BaseMapper<Post> {
      */
     @Select("UPDATE post SET view_count = view_count + 1 WHERE id = #{id}")
     void incrementViewCount(@Param("id") Long id);
+
+    /**
+     * 查询当前可访问的帖子 ID，用于启动时预热布隆过滤器。
+     */
+    @Select("SELECT id FROM post WHERE status = 1")
+    List<Long> selectActivePostIds();
 }
