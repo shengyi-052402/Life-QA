@@ -13,9 +13,6 @@ import java.util.List;
 public class ForumApplication {
     public static void main(String[] args) {
         SpringApplication.run(ForumApplication.class, args);
-        String[] s = {"a","d"};
-        List list = Arrays.asList(s);
-        HashMap hashMap= new HashMap<>();
-        hashMap.put("s", 2);
+
     }
 }

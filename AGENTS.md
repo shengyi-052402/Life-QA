@@ -10,7 +10,9 @@ Use `cd forum-web && npm install` once to install frontend dependencies.
 - `cd forum-web && npm run build`: create a production frontend build.
 - `cd forum-web && npm run preview`: preview the built frontend locally.
 - `cd forum && mvn clean package`: build all backend modules and run Maven tests.
-- `cd forum && mvn -pl forum-server spring-boot:run`: launch the API on port `8080`.
+- `cd forum && mvn -DskipTests "-Dmaven.repo.local=D:/ShengYi/QA-PLUS/.m2/repository" -pl forum-server -am spring-boot:run`: launch the API on port `8080` and build dependent local modules.
+  Do not use `mvn -pl forum-server spring-boot:run` for local backend startup because `forum-server` depends on in-repository modules `forum-common` and `forum-pojo`; `-am` is required to build those dependent modules.
+  Use the project-local Maven repository path `D:/ShengYi/QA-PLUS/.m2/repository`; the previous `D:\ShengYi\QA\.m2\repository` path can fail with "Access denied".
 
 ## Coding Style & Naming Conventions
 Follow the existing style in each stack. Vue files use 2-space indentation, single quotes, and PascalCase component filenames such as `PostDetail.vue`; keep API/helper modules in lower-case names like `post.js` and `request.js`. Java uses 4-space indentation, package names under `com.forum.*`, PascalCase class names, and suffix-based DTO/VO/entity naming such as `UserRegisterDTO` and `PostDetailVO`. Do not edit generated directories such as `forum-web/node_modules/` or `**/target/`.

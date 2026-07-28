@@ -4,6 +4,7 @@ import com.forum.server.messaging.event.SearchIndexEvent;
 import com.forum.server.service.SearchIndexWriter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
@@ -18,7 +19,7 @@ import java.util.concurrent.CompletableFuture;
 public class SearchIndexEventPublisher {
 
     private final KafkaTemplate<String, SearchIndexEvent> kafkaTemplate;
-    private final SearchIndexWriter searchIndexWriter;
+    private final ObjectProvider<SearchIndexWriter> searchIndexWriterProvider;
 
     @Value("${forum.kafka.topics.search-index:forum.search-index.events}")
     private String searchIndexTopic;
@@ -72,6 +73,12 @@ public class SearchIndexEventPublisher {
 
     private void fallbackToDirectIndex(SearchIndexEvent event) {
         // This keeps local development usable before Kafka is installed.
+        SearchIndexWriter searchIndexWriter = searchIndexWriterProvider.getIfAvailable();
+        if (searchIndexWriter == null) {
+            log.warn("Search index fallback skipped because no SearchIndexWriter is available. eventId={}", event.getEventId());
+            return;
+        }
+
         if (SearchIndexEvent.ACTION_DELETE.equals(event.getAction())) {
             searchIndexWriter.deletePostIndex(event.getPostId());
         } else {
