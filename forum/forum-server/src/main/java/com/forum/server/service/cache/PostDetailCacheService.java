@@ -10,9 +10,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
@@ -21,6 +24,21 @@ import java.util.concurrent.ThreadLocalRandom;
 public class PostDetailCacheService {
     private static final String POST_DETAIL_KEY_PREFIX = "forum:post:detail:";
     private static final String POST_DETAIL_LOCK_KEY_PREFIX = "forum:post:detail:lock:";
+    private static final String POST_DETAIL_VERSION_KEY_PREFIX = "forum:post:detail:version:";
+
+    private static final DefaultRedisScript<Long> PUT_IF_VERSION_SCRIPT = new DefaultRedisScript<>("""
+            local version = redis.call('GET', KEYS[2]) or '0'
+            if version ~= ARGV[1] then
+                return 0
+            end
+            redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3])
+            return 1
+            """, Long.class);
+
+    private static final DefaultRedisScript<Long> EVICT_SCRIPT = new DefaultRedisScript<>("""
+            redis.call('SET', KEYS[2], ARGV[1])
+            return redis.call('DEL', KEYS[1])
+            """, Long.class);
 
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
@@ -61,17 +79,34 @@ public class PostDetailCacheService {
         }
     }
 
-    public void put(Long postId, PostDetailVO postDetail) {
+    /** Capture before the database query; null means caching must be skipped on Redis failure. */
+    public String getVersion(Long postId) {
+        try {
+            String version = stringRedisTemplate.opsForValue().get(buildVersionKey(postId));
+            return version == null ? "0" : version;
+        } catch (Exception e) {
+            log.warn("Read post detail cache version failed, postId={}", postId, e);
+            return null;
+        }
+    }
+
+    public void put(Long postId, PostDetailVO postDetail, String expectedVersion) {
+        if (expectedVersion == null) {
+            return;
+        }
         try {
             Duration logicalTtl = buildLogicalTtl();
             CachedPostDetail cached = new CachedPostDetail(
                     postDetail,
                     System.currentTimeMillis() + logicalTtl.toMillis()
             );
-            stringRedisTemplate.opsForValue().set(
-                    buildKey(postId),
+            // Check and write in one Redis operation: an eviction fences out in-flight old reads.
+            stringRedisTemplate.execute(
+                    PUT_IF_VERSION_SCRIPT,
+                    List.of(buildKey(postId), buildVersionKey(postId)),
+                    expectedVersion,
                     objectMapper.writeValueAsString(cached),
-                    buildPhysicalTtl(logicalTtl)
+                    String.valueOf(buildPhysicalTtl(logicalTtl).toMillis())
             );
         } catch (JsonProcessingException e) {
             log.warn("Serialize post detail cache failed, postId={}", postId, e);
@@ -82,8 +117,9 @@ public class PostDetailCacheService {
 //清缓存
     public void evict(Long postId) {
         try {
-            stringRedisTemplate.delete(buildKey(postId));
-            stringRedisTemplate.delete(buildLockKey(postId));
+            // Keep the version while old rebuilds may still run; expiring it would allow ABA.
+            stringRedisTemplate.execute(EVICT_SCRIPT,
+                    List.of(buildKey(postId), buildVersionKey(postId)), UUID.randomUUID().toString());
         } catch (Exception e) {
             log.warn("Evict post detail cache failed, postId={}", postId, e);
         }
@@ -126,6 +162,10 @@ public class PostDetailCacheService {
 
     private String buildKey(Long postId) {
         return POST_DETAIL_KEY_PREFIX + postId;
+    }
+
+    private String buildVersionKey(Long postId) {
+        return POST_DETAIL_VERSION_KEY_PREFIX + postId;
     }
 
     private String buildLockKey(Long postId) {

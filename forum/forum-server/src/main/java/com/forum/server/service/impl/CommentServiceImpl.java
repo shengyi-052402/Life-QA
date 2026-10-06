@@ -59,7 +59,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
     public Long createComment(CommentCreateDTO dto) {
         Long userId = BaseContext.getCurrentId();
 
-        Post post = postMapper.selectById(dto.getPostId());
+        Post post = postMapper.selectByIdForUpdate(dto.getPostId());
         if (post == null || post.getStatus() != 1) {
             throw new BaseException("帖子不存在或已被隐藏");
         }
@@ -85,8 +85,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
 
         save(comment);
 
-        post.setCommentCount(post.getCommentCount() + 1);
-        postMapper.updateById(post);
+        postMapper.adjustCommentCount(post.getId(), 1);
         postCacheInvalidationEventPublisher.publishEvictDetail(dto.getPostId());
         contentRankingService.refreshPost(dto.getPostId());
         userInterestService.recordInteraction(userId, dto.getPostId(), 3.0);
@@ -120,6 +119,12 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
     public void deleteComment(Long id) {
         Long userId = BaseContext.getCurrentId();
         Comment comment = getById(id);
+        if (comment == null) {
+            throw new BaseException("评论不存在");
+        }
+        // Keep the post -> comment lock order shared with likes and post deletion.
+        Post post = postMapper.selectByIdForUpdate(comment.getPostId());
+        comment = baseMapper.selectByIdForUpdate(id);
         if (comment == null || comment.getStatus() != 1) {
             throw new BaseException("评论不存在");
         }
@@ -132,10 +137,8 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         comment.setStatus(0);
         updateById(comment);
 
-        Post post = postMapper.selectById(comment.getPostId());
         if (post != null) {
-            post.setCommentCount(Math.max(0, post.getCommentCount() - 1));
-            postMapper.updateById(post);
+            postMapper.adjustCommentCount(post.getId(), -1);
             postCacheInvalidationEventPublisher.publishEvictDetail(post.getId());
             searchService.syncPost(post.getId());
             contentRankingService.refreshPost(post.getId());

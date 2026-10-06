@@ -36,6 +36,7 @@ public class PostCacheInvalidationEventPublisher {
         }
 
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            fallbackConsumer.evict(event);
             sendAsync(event);
             return;
         }
@@ -43,6 +44,8 @@ public class PostCacheInvalidationEventPublisher {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
+                // Evict immediately; Kafka is an additional retry path, not the first eviction.
+                fallbackConsumer.evict(event);
                 sendAsync(event);
             }
         });

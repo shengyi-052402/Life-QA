@@ -135,7 +135,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updatePost(PostUpdateDTO dto) {
-        Post post = getById(dto.getId());
+        Post post = baseMapper.selectByIdForUpdate(dto.getId());
         if (post == null) {
             throw new BaseException(MessageConstant.POST_NOT_FOUND);
         }
@@ -181,7 +181,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deletePost(Long id) {
-        Post post = getById(id);
+        Post post = baseMapper.selectByIdForUpdate(id);
         if (post == null) {
             throw new BaseException(MessageConstant.POST_NOT_FOUND);
         }
@@ -235,6 +235,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
             return cached;
         }
 
+        String cacheVersion = postDetailCacheService.getVersion(id);
         Post post = getById(id);
         if (post == null || post.getStatus() != 1) {
             postDetailCacheService.evict(id);
@@ -245,7 +246,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         PostDetailVO vo = buildPostDetailVO(post);
         vo.setIsLiked(false);
         vo.setIsFavorited(false);
-        postDetailCacheService.put(id, vo);
+        postDetailCacheService.put(id, vo, cacheVersion);
         fillInteractionStatus(vo, id);
         return vo;
     }
@@ -266,6 +267,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
 
     private void rebuildPostDetailCache(Long id) {
         try {
+            String cacheVersion = postDetailCacheService.getVersion(id);
             Post post = getById(id);
             if (post == null || post.getStatus() != 1) {
                 postDetailCacheService.evict(id);
@@ -275,7 +277,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
             PostDetailVO vo = buildPostDetailVO(post);
             vo.setIsLiked(false);
             vo.setIsFavorited(false);
-            postDetailCacheService.put(id, vo);
+            postDetailCacheService.put(id, vo, cacheVersion);
         } catch (Exception e) {
             postDetailCacheService.evict(id);
             throw e;
@@ -544,7 +546,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
             throw new BaseException("至少提供一个更新项");
         }
 
-        Post post = getById(id);
+        Post post = baseMapper.selectByIdForUpdate(id);
         if (post == null) {
             throw new BaseException(MessageConstant.POST_NOT_FOUND);
         }

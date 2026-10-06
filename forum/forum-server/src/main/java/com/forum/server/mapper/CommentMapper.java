@@ -5,11 +5,17 @@ import com.forum.pojo.entity.Comment;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 
 @Mapper
 public interface CommentMapper extends BaseMapper<Comment> {
+    @Select("SELECT * FROM comment WHERE id = #{id} FOR UPDATE")
+    Comment selectByIdForUpdate(@Param("id") Long id);
+
+    @Update("UPDATE comment SET like_count = GREATEST(0, COALESCE(like_count, 0) + #{delta}) WHERE id = #{id}")
+    int adjustLikeCount(@Param("id") Long id, @Param("delta") int delta);
     
     /**
      * 根据所属帖子ID和父评论ID，获取最近的回复用于一级评论自带的两条子回复展示
