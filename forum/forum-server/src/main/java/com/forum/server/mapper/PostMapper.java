@@ -11,6 +11,8 @@ import java.util.List;
 
 @Mapper
 public interface PostMapper extends BaseMapper<Post> {
+
+
     @Select("SELECT * FROM post WHERE id = #{id} FOR UPDATE")
     Post selectByIdForUpdate(@Param("id") Long id);
 

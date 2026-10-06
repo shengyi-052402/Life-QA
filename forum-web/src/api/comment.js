@@ -33,23 +33,26 @@ export function getCommentLocation(id, params) {
 
 // ---- 以下为 interaction.js 也能放这，稍微合并一下 ----
 
-export function togglePostLike(postId) {
-  return request({
-    url: `/interactions/posts/${postId}/like`,
-    method: 'post'
-  })
+async function setInteractionState(url, active) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await request({ url, method: 'put', data: { active }, silentNetworkError: attempt === 0 })
+    } catch (error) {
+      const retryable = ['ECONNABORTED', 'ETIMEDOUT', 'ERR_NETWORK'].includes(error.code)
+      if (!retryable || attempt === 1) throw error
+      // Retry the exact desired state, never toggle after an ambiguous timeout.
+    }
+  }
 }
 
-export function toggleCommentLike(commentId) {
-  return request({
-    url: `/interactions/comments/${commentId}/like`,
-    method: 'post'
-  })
+export function setPostLike(postId, active) {
+  return setInteractionState(`/interactions/posts/${postId}/like`, active)
 }
 
-export function togglePostFavorite(postId) {
-  return request({
-    url: `/interactions/posts/${postId}/favorite`,
-    method: 'post'
-  })
+export function setCommentLike(commentId, active) {
+  return setInteractionState(`/interactions/comments/${commentId}/like`, active)
+}
+
+export function setPostFavorite(postId, active) {
+  return setInteractionState(`/interactions/posts/${postId}/favorite`, active)
 }

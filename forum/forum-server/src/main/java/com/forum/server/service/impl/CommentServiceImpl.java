@@ -135,7 +135,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         }
 
         comment.setStatus(0);
-        updateById(comment);
+        lambdaUpdate().eq(Comment::getId, id).set(Comment::getStatus, 0).update();
 
         if (post != null) {
             postMapper.adjustCommentCount(post.getId(), -1);

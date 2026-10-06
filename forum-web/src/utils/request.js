@@ -81,6 +81,9 @@ service.interceptors.response.use(
   },
   error => {
     console.log('err' + error)
+    if (error.config?.silentNetworkError && ['ECONNABORTED', 'ETIMEDOUT', 'ERR_NETWORK'].includes(error.code)) {
+      return Promise.reject(error)
+    }
     // 处理 HTTP 状态码错误
     let message = error.message
     if (error.response && error.response.status === 401) {

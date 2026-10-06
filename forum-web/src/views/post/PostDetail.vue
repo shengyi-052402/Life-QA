@@ -39,11 +39,11 @@
             <div class="post-content wangeditor-content" v-html="post.content"></div>
 
             <div class="post-actions mt-30">
-              <el-button size="large" :type="post.isLiked ? 'primary' : 'default'" @click="handleLike">
+              <el-button size="large" :loading="likePending" :type="post.isLiked ? 'primary' : 'default'" @click="handleLike">
                 <el-icon class="mr-1"><Pointer /></el-icon>
                 点赞 ({{ post.likeCount }})
               </el-button>
-              <el-button size="large" :type="post.isFavorited ? 'warning' : 'default'" @click="handleFavorite">
+              <el-button size="large" :loading="favoritePending" :type="post.isFavorited ? 'warning' : 'default'" @click="handleFavorite">
                 <el-icon class="mr-1"><Star /></el-icon>
                 收藏 ({{ post.favoriteCount }})
               </el-button>
@@ -99,7 +99,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Pointer, Star, View } from '@element-plus/icons-vue'
 import CommentSection from '@/components/CommentSection.vue'
-import { togglePostFavorite, togglePostLike } from '@/api/comment'
+import { setPostFavorite, setPostLike } from '@/api/comment'
 import { deletePost, getPostDetail } from '@/api/post'
 import { useUserStore } from '@/stores/user'
 import { formatDate } from '@/utils/format'
@@ -113,6 +113,8 @@ const postId = route.params.id
 
 const loading = ref(true)
 const post = ref(null)
+const likePending = ref(false)
+const favoritePending = ref(false)
 
 const focusCommentId = computed(() => Number(route.query.commentId) || null)
 const rootCommentId = computed(() => Number(route.query.rootCommentId) || null)
@@ -162,25 +164,43 @@ function handleDelete() {
 }
 
 async function handleLike() {
+  if (likePending.value) return
   if (!userStore.token) {
     ElMessage.warning('请先登录')
     return
   }
 
-  const res = await togglePostLike(postId)
-  post.value.isLiked = res.data
-  post.value.likeCount += res.data ? 1 : -1
+  const before = Boolean(post.value.isLiked)
+  likePending.value = true
+  try {
+    const res = await setPostLike(postId, !before)
+    post.value.isLiked = res.data
+    if (before !== res.data) post.value.likeCount = Math.max(0, Number(post.value.likeCount || 0) + (res.data ? 1 : -1))
+  } catch {
+    // The request interceptor reports errors; preserve the last confirmed local state.
+  } finally {
+    likePending.value = false
+  }
 }
 
 async function handleFavorite() {
+  if (favoritePending.value) return
   if (!userStore.token) {
     ElMessage.warning('请先登录')
     return
   }
 
-  const res = await togglePostFavorite(postId)
-  post.value.isFavorited = res.data
-  post.value.favoriteCount += res.data ? 1 : -1
+  const before = Boolean(post.value.isFavorited)
+  favoritePending.value = true
+  try {
+    const res = await setPostFavorite(postId, !before)
+    post.value.isFavorited = res.data
+    if (before !== res.data) post.value.favoriteCount = Math.max(0, Number(post.value.favoriteCount || 0) + (res.data ? 1 : -1))
+  } catch {
+    // A later click repeats the same desired state if both attempts timed out.
+  } finally {
+    favoritePending.value = false
+  }
 }
 
 onMounted(() => {

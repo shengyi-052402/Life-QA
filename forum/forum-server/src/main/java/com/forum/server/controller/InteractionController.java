@@ -1,6 +1,8 @@
 package com.forum.server.controller;
 
 import com.forum.common.result.Result;
+import com.forum.pojo.dto.InteractionStateDTO;
+import jakarta.validation.Valid;
 import com.forum.server.service.InteractionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -15,21 +17,21 @@ public class InteractionController {
 
     private final InteractionService interactionService;
 
-    @PostMapping("/posts/{postId}/like")
+    @PutMapping("/posts/{postId}/like")
     @Operation(summary = "点赞/取消点赞 帖子")
-    public Result<Boolean> togglePostLike(@PathVariable Long postId) {
-        return Result.success("操作成功", interactionService.togglePostLike(postId));
+    public Result<Boolean> setPostLike(@PathVariable Long postId, @Valid @RequestBody InteractionStateDTO state) {
+        return Result.success("操作成功", interactionService.setPostLike(postId, state.getActive()));
     }
 
-    @PostMapping("/comments/{commentId}/like")
+    @PutMapping("/comments/{commentId}/like")
     @Operation(summary = "点赞/取消点赞 评论")
-    public Result<Boolean> toggleCommentLike(@PathVariable Long commentId) {
-        return Result.success("操作成功", interactionService.toggleCommentLike(commentId));
+    public Result<Boolean> setCommentLike(@PathVariable Long commentId, @Valid @RequestBody InteractionStateDTO state) {
+        return Result.success("操作成功", interactionService.setCommentLike(commentId, state.getActive()));
     }
 
-    @PostMapping("/posts/{postId}/favorite")
+    @PutMapping("/posts/{postId}/favorite")
     @Operation(summary = "收藏/取消收藏 帖子")
-    public Result<Boolean> togglePostFavorite(@PathVariable Long postId) {
-        return Result.success("操作成功", interactionService.togglePostFavorite(postId));
+    public Result<Boolean> setPostFavorite(@PathVariable Long postId, @Valid @RequestBody InteractionStateDTO state) {
+        return Result.success("操作成功", interactionService.setPostFavorite(postId, state.getActive()));
     }
 }

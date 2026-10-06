@@ -4,6 +4,8 @@
 forum-web/dist/
 .m2/
 .mvn/
+.cache/
+output/playwright/
 
 # ========== IDE 文件 ==========
 .idea/

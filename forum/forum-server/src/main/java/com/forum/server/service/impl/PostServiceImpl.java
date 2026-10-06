@@ -41,6 +41,7 @@ import com.forum.server.service.TagService;
 import com.forum.server.service.UserService;
 import com.forum.server.service.distribution.ContentRankingService;
 import com.forum.server.service.distribution.ContentRecommendationService;
+import com.forum.server.service.distribution.InteractionProjectionQueue;
 import com.forum.server.service.cache.PostBloomFilterService;
 import com.forum.server.service.cache.PostDetailCacheService;
 import lombok.RequiredArgsConstructor;
@@ -79,6 +80,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
     private final PostCacheInvalidationEventPublisher postCacheInvalidationEventPublisher;
     private final ContentRankingService contentRankingService;
     private final ContentRecommendationService contentRecommendationService;
+    private final InteractionProjectionQueue interactionProjections;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -168,14 +170,20 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         post.setPlaceId(dto.getPlaceId());
         post.setLatitude(dto.getLatitude());
         post.setLongitude(dto.getLongitude());
-        updateById(post);
+        lambdaUpdate().eq(Post::getId, post.getId())
+                .set(Post::getTitle, post.getTitle()).set(Post::getContent, post.getContent())
+                .set(Post::getSummary, post.getSummary()).set(Post::getCoverImage, post.getCoverImage())
+                .set(Post::getCategoryId, post.getCategoryId()).set(Post::getLocationName, post.getLocationName())
+                .set(Post::getAddress, post.getAddress()).set(Post::getPlaceId, post.getPlaceId())
+                .set(Post::getLatitude, post.getLatitude()).set(Post::getLongitude, post.getLongitude())
+                .set(Post::getUpdatedAt, LocalDateTime.now()).update();
 
         postTagMapper.delete(new LambdaQueryWrapper<PostTag>().eq(PostTag::getPostId, post.getId()));
         decrementTagCounts(oldTagIds);
         handleTags(post.getId(), dto.getTagIds(), dto.getNewTags());
         postCacheInvalidationEventPublisher.publishEvictDetail(post.getId());
         searchService.syncPost(post.getId());
-        contentRankingService.refreshPost(post.getId(), oldCategoryId);
+        interactionProjections.contentChanged(post.getId(), oldCategoryId);
     }
 
     @Override
@@ -201,6 +209,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         }
 
         List<Long> tagIds = getTagIdsByPostId(id);
+        interactionProjections.contentChanged(id, post.getCategoryId());
         removeById(id);
         postTagMapper.delete(new LambdaQueryWrapper<PostTag>().eq(PostTag::getPostId, id));
         decrementTagCounts(tagIds);
@@ -209,7 +218,6 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         commentMapper.delete(new LambdaQueryWrapper<Comment>().eq(Comment::getPostId, id));
         postCacheInvalidationEventPublisher.publishEvictAll(id);
         searchService.deletePost(id);
-        contentRankingService.refreshPost(id, post.getCategoryId());
     }
 
     @Override
@@ -560,7 +568,11 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         if (dto.getIsEssence() != null) {
             post.setIsEssence(dto.getIsEssence());
         }
-        updateById(post);
+        lambdaUpdate().eq(Post::getId, id)
+                .set(dto.getStatus() != null, Post::getStatus, dto.getStatus())
+                .set(dto.getIsTop() != null, Post::getIsTop, dto.getIsTop())
+                .set(dto.getIsEssence() != null, Post::getIsEssence, dto.getIsEssence())
+                .set(Post::getUpdatedAt, LocalDateTime.now()).update();
         if (post.getStatus() != null && post.getStatus() == 1) {
             postBloomFilterService.add(id);
         }
@@ -570,7 +582,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         } else {
             searchService.deletePost(id);
         }
-        contentRankingService.refreshPost(id, post.getCategoryId());
+        interactionProjections.contentChanged(id, post.getCategoryId());
     }
 
     @Override

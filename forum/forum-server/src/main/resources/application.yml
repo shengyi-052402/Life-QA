@@ -2,6 +2,10 @@ server:
   port: ${SERVER_PORT:8080}
 
 spring:
+  task:
+    scheduling:
+      pool:
+        size: 4
   config:
     import:
       - optional:file:../.env[.properties]
@@ -85,8 +89,14 @@ forum:
       post-cache-invalidation: ${FORUM_POST_CACHE_INVALIDATION_TOPIC:forum.post-cache-invalidation.events}
   distribution:
     hot-rebuild-cron: ${FORUM_HOT_REBUILD_CRON:0 0 * * * *}
-    outbox-dispatch-delay-ms: ${FORUM_OUTBOX_DISPATCH_DELAY_MS:5000}
+    outbox-dispatch-delay-ms: ${FORUM_OUTBOX_DISPATCH_DELAY_MS:1000}
     dead-letter-replay-delay-ms: ${FORUM_DEAD_LETTER_REPLAY_DELAY_MS:600000}
+  interactions:
+    scan-delay-ms: ${FORUM_INTERACTION_SCAN_DELAY_MS:1000}
+    projection-delay-ms: ${FORUM_INTERACTION_PROJECTION_DELAY_MS:1000}
+    batch-size: ${FORUM_INTERACTION_BATCH_SIZE:500}
+    projection-batch-size: ${FORUM_INTERACTION_PROJECTION_BATCH_SIZE:500}
+    cleanup-delay-ms: ${FORUM_INTERACTION_CLEANUP_DELAY_MS:60000}
 knife4j:
   enable: ${KNIFE4J_ENABLE:true}
   openapi:

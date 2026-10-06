@@ -43,7 +43,7 @@
 
             <div class="comment-meta mt-10">
               <span class="time">{{ formatDate(comment.createdAt, true) }}</span>
-              <span class="action-btn ml-15" :class="{ liked: comment.isLiked }" @click="handleLike(comment)">
+              <span class="action-btn ml-15" :class="{ liked: comment.isLiked, pending: commentLikesPending.has(comment.id) }" :aria-disabled="commentLikesPending.has(comment.id)" @click="handleLike(comment)">
                 <el-icon><Pointer /></el-icon> <span v-if="comment.likeCount > 0">{{ comment.likeCount }}</span>
               </span>
               <span class="action-btn ml-15" @click="openReplyBox(comment.id, comment.author.id, comment.author.nickname)">
@@ -85,7 +85,7 @@
 
                   <div class="comment-meta mt-5">
                     <span class="time">{{ formatDate(sub.createdAt, true) }}</span>
-                    <span class="action-btn ml-10" :class="{ liked: sub.isLiked }" @click="handleLike(sub)">
+                    <span class="action-btn ml-10" :class="{ liked: sub.isLiked, pending: commentLikesPending.has(sub.id) }" :aria-disabled="commentLikesPending.has(sub.id)" @click="handleLike(sub)">
                       <el-icon><Pointer /></el-icon> <span v-if="sub.likeCount > 0">{{ sub.likeCount }}</span>
                     </span>
                     <span class="action-btn ml-10" @click="openReplyBox(comment.id, sub.author.id, sub.author.nickname, true)">
@@ -138,7 +138,7 @@
 import { nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ChatDotRound, Pointer } from '@element-plus/icons-vue'
-import { createComment, getCommentPage, toggleCommentLike } from '@/api/comment'
+import { createComment, getCommentPage, setCommentLike } from '@/api/comment'
 import { useUserStore } from '@/stores/user'
 import { formatDate } from '@/utils/format'
 
@@ -156,6 +156,7 @@ const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726
 
 const loading = ref(false)
 const comments = ref([])
+const commentLikesPending = reactive(new Set())
 const total = ref(0)
 const pageParams = reactive({
   page: props.initialPage,
@@ -279,13 +280,22 @@ async function loadMoreReplies(comment, page = 1) {
 }
 
 async function handleLike(commentOrSub) {
+  if (commentLikesPending.has(commentOrSub.id)) return
   if (!userStore.token) {
     ElMessage.warning('请先登录')
     return
   }
-  const res = await toggleCommentLike(commentOrSub.id)
-  commentOrSub.isLiked = res.data
-  commentOrSub.likeCount += res.data ? 1 : -1
+  const before = Boolean(commentOrSub.isLiked)
+  commentLikesPending.add(commentOrSub.id)
+  try {
+    const res = await setCommentLike(commentOrSub.id, !before)
+    commentOrSub.isLiked = res.data
+    if (before !== res.data) commentOrSub.likeCount = Math.max(0, Number(commentOrSub.likeCount || 0) + (res.data ? 1 : -1))
+  } catch {
+    // Keep confirmed state; the request interceptor displays the error.
+  } finally {
+    commentLikesPending.delete(commentOrSub.id)
+  }
 }
 
 async function focusTargetComment() {
@@ -397,6 +407,12 @@ onMounted(() => {
 .action-btn:hover,
 .action-btn.liked {
   color: var(--primary-color);
+}
+
+.action-btn.pending {
+  opacity: 0.6;
+  pointer-events: none;
+  cursor: wait;
 }
 
 .sub-comment-tree {

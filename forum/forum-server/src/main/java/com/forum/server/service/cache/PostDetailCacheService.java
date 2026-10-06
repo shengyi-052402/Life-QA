@@ -117,12 +117,17 @@ public class PostDetailCacheService {
 //清缓存
     public void evict(Long postId) {
         try {
-            // Keep the version while old rebuilds may still run; expiring it would allow ABA.
-            stringRedisTemplate.execute(EVICT_SCRIPT,
-                    List.of(buildKey(postId), buildVersionKey(postId)), UUID.randomUUID().toString());
+            evictStrict(postId);
         } catch (Exception e) {
             log.warn("Evict post detail cache failed, postId={}", postId, e);
         }
+    }
+
+    /** Durable workers must observe failure before acknowledging a projection. */
+    public void evictStrict(Long postId) {
+        Long result = stringRedisTemplate.execute(EVICT_SCRIPT,
+                List.of(buildKey(postId), buildVersionKey(postId)), UUID.randomUUID().toString());
+        if (result == null) throw new IllegalStateException("Redis did not acknowledge cache eviction");
     }
 
     public boolean tryLockRebuild(Long postId) {
