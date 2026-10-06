@@ -25,8 +25,13 @@ public class NotificationEvent {
 
     public static NotificationEvent create(Long receiverUserId, Long senderUserId, String type,
                                            Long postId, Long commentId, String content) {
+        return create(receiverUserId, senderUserId, type, postId, commentId, content, UUID.randomUUID().toString());
+    }
+
+    public static NotificationEvent create(Long receiverUserId, Long senderUserId, String type,
+                                           Long postId, Long commentId, String content, String eventId) {
         return NotificationEvent.builder()
-                .eventId(UUID.randomUUID().toString())
+                .eventId(eventId)
                 .receiverUserId(receiverUserId)
                 .senderUserId(senderUserId)
                 .type(type)

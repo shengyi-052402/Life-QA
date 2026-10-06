@@ -31,6 +31,15 @@ public class PostController {
         return Result.success(postService.getPostPage(queryDTO));
     }
 
+    @GetMapping("/recommend")
+    @Operation(summary = "获取为你推荐的帖子")
+    public Result<PageResult<PostListVO>> getRecommendations(
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "20") Integer size,
+            @RequestParam(required = false) Long categoryId) {
+        return Result.success(postService.getRecommendationPage(page, size, categoryId));
+    }
+
     @GetMapping("/globe")
     @Operation(summary = "获取有地理位置的帖子（供3D地球渲染）")
     public Result<List<PostGlobeVO>> getGlobePosts() {

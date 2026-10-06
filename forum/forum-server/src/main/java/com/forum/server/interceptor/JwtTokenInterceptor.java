@@ -11,11 +11,23 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.web.servlet.ModelAndView;
+
+import javax.annotation.Nullable;
 
 @Component
 @Slf4j
 public class JwtTokenInterceptor implements HandlerInterceptor {
 
+
+    /**
+     * 配置放行逻辑,将id存入ThreadLocal
+     * @param request current HTTP request
+     * @param response current HTTP response
+     * @param handler chosen handler to execute, for type and/or instance evaluation
+     * @return
+     * @throws Exception
+     */
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         // 放行 OPTIONS 请求
@@ -30,18 +42,18 @@ public class JwtTokenInterceptor implements HandlerInterceptor {
             String uri = request.getRequestURI();
             String method = request.getMethod();
             // 允许匿名访问的公开 GET 接口
-            if ("GET".equalsIgnoreCase(method) && 
+            if ("GET".equalsIgnoreCase(method) &&
                (uri.startsWith("/api/posts") || uri.startsWith("/api/categories") || uri.startsWith("/api/tags") || uri.startsWith("/api/comments"))) {
                 return true;
             }
-            
+
             response.setStatus(401);
             return false;
         }
 
         // 提取 Token 并解析
         token = token.substring(JwtConstant.TOKEN_PREFIX.length());
-        
+
         try {
             if (JwtUtil.isExpired(token)) {
                 response.setStatus(401);
@@ -57,6 +69,8 @@ public class JwtTokenInterceptor implements HandlerInterceptor {
             return false;
         }
     }
+
+
 
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {

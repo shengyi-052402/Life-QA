@@ -25,11 +25,11 @@ public class PostCacheInvalidationEvent {
     public static PostCacheInvalidationEvent evictDetail(Long postId) {
         return create(ACTION_EVICT_DETAIL, postId);
     }
-
+    //构建消息主体内容
     public static PostCacheInvalidationEvent evictAll(Long postId) {
         return create(ACTION_EVICT_ALL, postId);
     }
-
+//构建消息主体内容
     private static PostCacheInvalidationEvent create(String action, Long postId) {
         return PostCacheInvalidationEvent.builder()
                 .eventId(UUID.randomUUID().toString())

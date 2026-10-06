@@ -50,6 +50,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     private final CommentMapper commentMapper;
     private final CategoryService categoryService;
 
+/**
+ * 注册账号
+*/
     @Override
     public void register(UserRegisterDTO registerDTO) {
         long countByUsername = count(new LambdaQueryWrapper<User>()

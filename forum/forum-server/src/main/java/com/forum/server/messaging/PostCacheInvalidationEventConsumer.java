@@ -27,7 +27,7 @@ public class PostCacheInvalidationEventConsumer {
 
         evict(event);
     }
-
+//消息失败后手动清理缓存
     public void evict(PostCacheInvalidationEvent event) {
         Long postId = event.getPostId();
         postDetailCacheService.evict(postId);

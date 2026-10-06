@@ -79,7 +79,7 @@ public class PostDetailCacheService {
             log.warn("Write post detail cache failed, postId={}", postId, e);
         }
     }
-
+//清缓存
     public void evict(Long postId) {
         try {
             stringRedisTemplate.delete(buildKey(postId));
@@ -110,14 +110,14 @@ public class PostDetailCacheService {
             log.warn("Unlock post detail cache rebuild failed, postId={}", postId, e);
         }
     }
-
+//设置动态抖动ttl---逻辑过期时间
     private Duration buildLogicalTtl() {
         long jitter = postDetailTtlJitterSeconds <= 0
                 ? 0
                 : ThreadLocalRandom.current().nextLong(postDetailTtlJitterSeconds + 1);
         return Duration.ofSeconds(postDetailTtlSeconds + jitter);
     }
-
+//设置物理过期时间
     private Duration buildPhysicalTtl(Duration logicalTtl) {
         // 物理 TTL 比逻辑 TTL 更长，让过期后的旧值还能短暂留在 Redis 中兜底。
         long retainSeconds = Math.max(1, postDetailStaleRetainSeconds);

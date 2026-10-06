@@ -39,6 +39,8 @@ import com.forum.server.service.PostService;
 import com.forum.server.service.SearchService;
 import com.forum.server.service.TagService;
 import com.forum.server.service.UserService;
+import com.forum.server.service.distribution.ContentRankingService;
+import com.forum.server.service.distribution.ContentRecommendationService;
 import com.forum.server.service.cache.PostBloomFilterService;
 import com.forum.server.service.cache.PostDetailCacheService;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +50,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.time.LocalDateTime;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -71,6 +77,8 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
     private final PostBloomFilterService postBloomFilterService;
     private final PostDetailCacheService postDetailCacheService;
     private final PostCacheInvalidationEventPublisher postCacheInvalidationEventPublisher;
+    private final ContentRankingService contentRankingService;
+    private final ContentRecommendationService contentRecommendationService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -116,9 +124,14 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         handleTags(postId, dto.getTagIds(), dto.getNewTags());
         postBloomFilterService.add(postId);
         searchService.syncPost(postId);
+        contentRankingService.refreshPost(postId);
         return postId;
     }
 
+    /**
+     * 更新帖子
+     * @param dto
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updatePost(PostUpdateDTO dto) {
@@ -129,7 +142,8 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
 
         assertCanManagePost(post);
         List<Long> oldTagIds = getTagIdsByPostId(post.getId());
-
+        Long oldCategoryId = post.getCategoryId();
+    //修改数据
         if (!post.getCategoryId().equals(dto.getCategoryId())) {
             Category oldCategory = categoryService.getById(post.getCategoryId());
             if (oldCategory != null) {
@@ -161,6 +175,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         handleTags(post.getId(), dto.getTagIds(), dto.getNewTags());
         postCacheInvalidationEventPublisher.publishEvictDetail(post.getId());
         searchService.syncPost(post.getId());
+        contentRankingService.refreshPost(post.getId(), oldCategoryId);
     }
 
     @Override
@@ -194,6 +209,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         commentMapper.delete(new LambdaQueryWrapper<Comment>().eq(Comment::getPostId, id));
         postCacheInvalidationEventPublisher.publishEvictAll(id);
         searchService.deletePost(id);
+        contentRankingService.refreshPost(id, post.getCategoryId());
     }
 
     @Override
@@ -205,6 +221,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         }
 
         baseMapper.incrementViewCount(id);
+        contentRankingService.refreshPost(id);
 
         PostDetailCacheService.CacheResult cacheResult = postDetailCacheService.get(id);
         if (cacheResult.hit()) {
@@ -295,6 +312,9 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
 
     @Override
     public PageResult<PostListVO> getPostPage(PostPageQueryDTO queryDTO) {
+        if ("hot".equals(queryDTO.getSort())) {
+            return getHotPage(queryDTO);
+        }
         Page<Post> pageParam = new Page<>(queryDTO.getPage(), queryDTO.getSize());
         LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(Post::getStatus, 1);
@@ -342,9 +362,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
             });
         }
 
-        if ("hot".equals(queryDTO.getSort())) {
-            wrapper.orderByDesc(Post::getIsTop).orderByDesc(Post::getViewCount);
-        } else if ("most_liked".equals(queryDTO.getSort())) {
+        if ("most_liked".equals(queryDTO.getSort())) {
             wrapper.orderByDesc(Post::getIsTop).orderByDesc(Post::getLikeCount);
         } else if ("most_commented".equals(queryDTO.getSort())) {
             wrapper.orderByDesc(Post::getIsTop).orderByDesc(Post::getCommentCount);
@@ -383,6 +401,106 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         }).collect(Collectors.toList());
 
         return new PageResult<>(pageParam.getTotal(), records);
+    }
+
+    @Override
+    public PageResult<PostListVO> getRecommendationPage(Integer page, Integer size, Long categoryId) {
+        int safePage = Math.max(page == null ? 1 : page, 1);
+        int safeSize = Math.min(Math.max(size == null ? 20 : size, 1), 50);
+        List<Long> ids = contentRecommendationService.recommend(BaseContext.getCurrentId(), categoryId);
+        return pageByIds(ids, safePage, safeSize);
+    }
+
+    private PageResult<PostListVO> getHotPage(PostPageQueryDTO queryDTO) {
+        int safePage = Math.max(queryDTO.getPage() == null ? 1 : queryDTO.getPage(), 1);
+        int safeSize = Math.min(Math.max(queryDTO.getSize() == null ? 20 : queryDTO.getSize(), 1), 50);
+        LambdaQueryWrapper<Post> query = new LambdaQueryWrapper<Post>()
+                .eq(Post::getStatus, 1)
+                .and(item -> item.eq(Post::getIsTop, 1)
+                        .or()
+                        .ge(Post::getCreatedAt, LocalDateTime.now().minusHours(24)));
+        if (queryDTO.getCategoryId() != null) query.eq(Post::getCategoryId, queryDTO.getCategoryId());
+        applyPostFilters(query, queryDTO);
+
+        List<Post> eligible = list(query);
+        List<Long> rankedIds = contentRankingService.getAllHotPostIds(queryDTO.getCategoryId());
+        Map<Long, Integer> rank = new HashMap<>();
+        for (int i = 0; i < rankedIds.size(); i++) rank.put(rankedIds.get(i), i);
+
+        Comparator<Post> byHeat = Comparator
+                .comparingInt((Post post) -> rank.getOrDefault(post.getId(), Integer.MAX_VALUE))
+                .thenComparing(Comparator.comparingDouble(contentRankingService::hotScore).reversed())
+                .thenComparing(Post::getCreatedAt, Comparator.reverseOrder());
+        eligible.sort(Comparator
+                .comparing((Post post) -> post.getIsTop() != null && post.getIsTop() == 1).reversed()
+                .thenComparing((left, right) -> {
+                    boolean leftTop = left.getIsTop() != null && left.getIsTop() == 1;
+                    boolean rightTop = right.getIsTop() != null && right.getIsTop() == 1;
+                    if (leftTop && rightTop) return Comparator.comparing(Post::getCreatedAt).reversed().compare(left, right);
+                    return byHeat.compare(left, right);
+                }));
+
+        int from = (safePage - 1) * safeSize;
+        if (from >= eligible.size()) return new PageResult<>((long) eligible.size(), Collections.emptyList());
+        List<PostListVO> records = eligible.subList(from, Math.min(from + safeSize, eligible.size()))
+                .stream().map(this::buildPostListVO).collect(Collectors.toList());
+        return new PageResult<>((long) eligible.size(), records);
+    }
+
+    private void applyPostFilters(LambdaQueryWrapper<Post> query, PostPageQueryDTO queryDTO) {
+        if (queryDTO.getTagId() != null) {
+            List<Long> taggedPostIds = postTagMapper.selectList(new LambdaQueryWrapper<PostTag>()
+                            .eq(PostTag::getTagId, queryDTO.getTagId()))
+                    .stream().map(PostTag::getPostId).distinct().collect(Collectors.toList());
+            if (taggedPostIds.isEmpty()) {
+                query.eq(Post::getId, -1L);
+            } else {
+                query.in(Post::getId, taggedPostIds);
+            }
+        }
+        if (StringUtils.hasText(queryDTO.getKeyword())) {
+            String keyword = queryDTO.getKeyword().trim();
+            List<Long> matchedTagIds = tagService.list(new LambdaQueryWrapper<Tag>().like(Tag::getName, keyword))
+                    .stream().map(Tag::getId).collect(Collectors.toList());
+            List<Long> postIdsByTag = matchedTagIds.isEmpty() ? Collections.emptyList()
+                    : postTagMapper.selectList(new LambdaQueryWrapper<PostTag>().in(PostTag::getTagId, matchedTagIds))
+                    .stream().map(PostTag::getPostId).distinct().collect(Collectors.toList());
+            query.and(item -> {
+                item.like(Post::getTitle, keyword)
+                        .or().like(Post::getSummary, keyword)
+                        .or().like(Post::getContent, keyword);
+                if (!postIdsByTag.isEmpty()) item.or().in(Post::getId, postIdsByTag);
+            });
+        }
+    }
+
+    private PageResult<PostListVO> pageByIds(List<Long> ids, int page, int size) {
+        int from = (page - 1) * size;
+        if (from >= ids.size()) return new PageResult<>((long) ids.size(), Collections.emptyList());
+        List<Long> pageIds = ids.subList(from, Math.min(from + size, ids.size()));
+        List<Post> posts = listByIds(pageIds);
+        Map<Long, Post> byId = new HashMap<>();
+        posts.forEach(post -> {
+            if (post.getStatus() != null && post.getStatus() == 1) byId.put(post.getId(), post);
+        });
+        List<PostListVO> records = pageIds.stream().map(byId::get).filter(java.util.Objects::nonNull)
+                .map(this::buildPostListVO).collect(Collectors.toList());
+        return new PageResult<>((long) ids.size(), records);
+    }
+
+    private PostListVO buildPostListVO(Post post) {
+        PostListVO vo = PostListVO.builder().build();
+        BeanUtils.copyProperties(post, vo);
+        vo.setIsTop(post.getIsTop() == 1);
+        vo.setIsEssence(post.getIsEssence() == 1);
+        vo.setTags(getTagVOsByPostId(post.getId()));
+        User user = userService.getById(post.getUserId());
+        if (user != null) {
+            vo.setAuthor(UserVO.builder().id(user.getId()).nickname(user.getNickname()).avatar(user.getAvatar()).build());
+        }
+        Category category = categoryService.getById(post.getCategoryId());
+        if (category != null) vo.setCategoryName(category.getName());
+        return vo;
     }
 
     @Override
@@ -450,6 +568,7 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         } else {
             searchService.deletePost(id);
         }
+        contentRankingService.refreshPost(id, post.getCategoryId());
     }
 
     @Override
@@ -482,6 +601,12 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         }).collect(Collectors.toList());
     }
 
+    /**
+     * 处理tag和post之间的连接
+     * @param postId
+     * @param tagIds
+     * @param newTags
+     */
     private void handleTags(Long postId, List<Long> tagIds, List<String> newTags) {
         if (tagIds == null) {
             tagIds = new ArrayList<>();
@@ -513,6 +638,10 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         }
     }
 
+    /**
+     * 判断当前用户是否可以管理帖子
+     * @param post
+     */
     private void assertCanManagePost(Post post) {
         Long userId = BaseContext.getCurrentId();
         if (userId == null) {
@@ -583,6 +712,10 @@ public class PostServiceImpl extends ServiceImpl<PostMapper, Post> implements Po
         }).collect(Collectors.toList());
     }
 
+    /**
+     * 减少标签计数
+     * @param tagIds
+     */
     private void decrementTagCounts(List<Long> tagIds) {
         for (Long tagId : tagIds) {
             Tag tag = tagService.getById(tagId);

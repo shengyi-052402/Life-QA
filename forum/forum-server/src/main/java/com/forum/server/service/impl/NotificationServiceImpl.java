@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -43,6 +44,31 @@ public class NotificationServiceImpl extends ServiceImpl<NotificationMapper, Not
                 .content(content)
                 .isRead(0)
                 .build());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean createNotificationFromEvent(String eventId, Long receiverUserId, Long senderUserId,
+                                               String type, Long postId, Long commentId, String content) {
+        if (eventId == null || receiverUserId == null || senderUserId == null || receiverUserId.equals(senderUserId)) {
+            return false;
+        }
+        try {
+            save(Notification.builder()
+                    .eventId(eventId)
+                    .receiverUserId(receiverUserId)
+                    .senderUserId(senderUserId)
+                    .type(type)
+                    .postId(postId)
+                    .commentId(commentId)
+                    .content(content)
+                    .isRead(0)
+                    .build());
+            return true;
+        } catch (DuplicateKeyException ignored) {
+            // The database unique key is the durable consumer idempotency boundary.
+            return false;
+        }
     }
 
     @Override

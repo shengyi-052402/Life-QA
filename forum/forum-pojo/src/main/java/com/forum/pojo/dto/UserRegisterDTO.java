@@ -9,6 +9,8 @@ import java.io.Serializable;
 /** 用户注册 DTO */
 @Data
 public class UserRegisterDTO implements Serializable {
+
+
     @NotBlank(message = "用户名不能为空")
     @Size(min = 3, max = 50, message = "用户名长度为3-50字符")
     private String username;

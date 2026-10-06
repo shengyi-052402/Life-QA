@@ -6,6 +6,7 @@
           <div class="filter-header">
             <el-tabs v-model="queryParams.sort" class="sort-tabs" @tab-change="handleFilter">
               <el-tab-pane label="最新发布" name="latest" />
+              <el-tab-pane label="为你推荐" name="recommend" />
               <el-tab-pane label="最热浏览" name="hot" />
               <el-tab-pane label="点赞最多" name="most_liked" />
               <el-tab-pane label="最多评论" name="most_commented" />
@@ -125,7 +126,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getCategories } from '@/api/category'
-import { getPostPage } from '@/api/post'
+import { getPostPage, getRecommendedPosts } from '@/api/post'
 import { getHotTags } from '@/api/tag'
 import { formatDate } from '@/utils/format'
 import { ChatDotRound, Pointer, View } from '@element-plus/icons-vue'
@@ -176,7 +177,9 @@ function syncQueryToRoute() {
 function applyRouteQuery() {
   queryParams.sort = route.query.sort || 'latest'
   queryParams.categoryId = route.query.categoryId ? Number(route.query.categoryId) : null
-  queryParams.tagId = route.query.tagId ? Number(route.query.tagId) : null
+  queryParams.tagId = queryParams.sort === 'recommend'
+    ? null
+    : route.query.tagId ? Number(route.query.tagId) : null
   queryParams.page = route.query.page ? Number(route.query.page) : 1
   selectedTagName.value = queryParams.tagId
     ? route.query.tagName || hotTags.value.find(item => item.id === queryParams.tagId)?.name || ''
@@ -186,7 +189,13 @@ function applyRouteQuery() {
 async function fetchPosts() {
   loading.value = true
   try {
-    const res = await getPostPage(queryParams)
+    const res = queryParams.sort === 'recommend'
+      ? await getRecommendedPosts({
+          page: queryParams.page,
+          size: queryParams.size,
+          categoryId: queryParams.categoryId
+        })
+      : await getPostPage(queryParams)
     postList.value = res.data.records
     total.value = res.data.total
   } finally {
@@ -206,6 +215,11 @@ async function fetchHotTags() {
 }
 
 function handleFilter() {
+  if (queryParams.sort === 'recommend') {
+    queryParams.tagId = null
+    queryParams.keyword = ''
+    selectedTagName.value = ''
+  }
   queryParams.page = 1
   syncQueryToRoute()
 }

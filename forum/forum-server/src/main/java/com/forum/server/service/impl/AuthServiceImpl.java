@@ -24,7 +24,10 @@ public class AuthServiceImpl implements AuthService {
 
     private final UserService userService;
     private final PasswordEncoder passwordEncoder;
-
+/**
+ *用户登录
+ * 校验信息和账号
+ */
     @Override
     public UserLoginVO login(UserLoginDTO loginDTO) {
         User user = userService.getByUsername(loginDTO.getUsername());
@@ -44,6 +47,12 @@ public class AuthServiceImpl implements AuthService {
         return buildLoginVO(user);
     }
 
+    /**
+     * 前端自动调用刷新token
+     * @param userId
+     * @return
+     */
+
     @Override
     public UserLoginVO refresh(Long userId) {
         User user = userService.getById(userId);
@@ -57,6 +66,12 @@ public class AuthServiceImpl implements AuthService {
         return buildLoginVO(user);
     }
 
+    /**
+     *
+     * 返回登录信息
+     * @param user
+     * @return
+     */
     private UserLoginVO buildLoginVO(User user) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", user.getId());

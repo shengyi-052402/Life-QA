@@ -18,6 +18,11 @@ public class JwtUtil {
     private static volatile String secretKey;
     private static volatile long expiration = JwtConstant.EXPIRATION;
 
+    /**
+     * 将JwtConfig@Value读取的yml数据配置到这里
+     * @param secret 特殊签名
+     * @param expirationMillis 存活时间
+     */
     public static void configure(String secret, long expirationMillis) {
         if (secret == null || secret.trim().length() < 32) {
             throw new IllegalArgumentException("JWT secret must be at least 32 characters");
@@ -28,6 +33,9 @@ public class JwtUtil {
         secretKey = secret.trim();
         expiration = expirationMillis;
     }
+/**
+ * 设置方法签名
+ */
 
     private static SecretKey getSigningKey() {
         if (secretKey == null) {

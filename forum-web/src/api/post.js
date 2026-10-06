@@ -8,6 +8,14 @@ export function getPostPage(params) {
   })
 }
 
+export function getRecommendedPosts(params) {
+  return request({
+    url: '/posts/recommend',
+    method: 'get',
+    params
+  })
+}
+
 export function getPostDetail(id) {
   return request({
     url: `/posts/${id}`,

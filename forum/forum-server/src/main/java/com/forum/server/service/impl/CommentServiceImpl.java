@@ -28,6 +28,8 @@ import com.forum.server.messaging.PostCacheInvalidationEventPublisher;
 import com.forum.server.service.CommentService;
 import com.forum.server.service.SearchService;
 import com.forum.server.service.UserService;
+import com.forum.server.service.distribution.ContentRankingService;
+import com.forum.server.service.distribution.UserInterestService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
@@ -49,6 +51,8 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
     private final NotificationEventPublisher notificationEventPublisher;
     private final SearchService searchService;
     private final PostCacheInvalidationEventPublisher postCacheInvalidationEventPublisher;
+    private final ContentRankingService contentRankingService;
+    private final UserInterestService userInterestService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -84,6 +88,8 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         post.setCommentCount(post.getCommentCount() + 1);
         postMapper.updateById(post);
         postCacheInvalidationEventPublisher.publishEvictDetail(dto.getPostId());
+        contentRankingService.refreshPost(dto.getPostId());
+        userInterestService.recordInteraction(userId, dto.getPostId(), 3.0);
 
         if (dto.getParentId() != 0L && dto.getReplyToUserId() != null) {
             notificationEventPublisher.publish(
@@ -132,6 +138,8 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             postMapper.updateById(post);
             postCacheInvalidationEventPublisher.publishEvictDetail(post.getId());
             searchService.syncPost(post.getId());
+            contentRankingService.refreshPost(post.getId());
+            userInterestService.recordInteraction(comment.getUserId(), post.getId(), -3.0);
         }
     }
 

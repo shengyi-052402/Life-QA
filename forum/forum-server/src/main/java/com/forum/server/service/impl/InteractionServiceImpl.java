@@ -17,6 +17,8 @@ import com.forum.server.messaging.NotificationEventPublisher;
 import com.forum.server.messaging.PostCacheInvalidationEventPublisher;
 import com.forum.server.service.InteractionService;
 import com.forum.server.service.cache.PostInteractionCacheService;
+import com.forum.server.service.distribution.ContentRankingService;
+import com.forum.server.service.distribution.UserInterestService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,7 +39,14 @@ public class InteractionServiceImpl implements InteractionService {
     private final NotificationEventPublisher notificationEventPublisher;
     private final PostCacheInvalidationEventPublisher postCacheInvalidationEventPublisher;
     private final PostInteractionCacheService postInteractionCacheService;
+    private final ContentRankingService contentRankingService;
+    private final UserInterestService userInterestService;
 
+    /**
+     * 切换 post 喜欢状态
+     * @param postId
+     * @return
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean togglePostLike(Long postId) {
@@ -57,6 +66,7 @@ public class InteractionServiceImpl implements InteractionService {
 
     private boolean syncPostLikeByCacheResult(Post post, Long userId, PostInteractionCacheService.ToggleResult result) {
         Long postId = post.getId();
+        //查询条件
         LambdaQueryWrapper<PostLike> wrapper = new LambdaQueryWrapper<PostLike>()
                 .eq(PostLike::getPostId, postId)
                 .eq(PostLike::getUserId, userId);
@@ -67,13 +77,18 @@ public class InteractionServiceImpl implements InteractionService {
             }
             updatePostLikeCount(post, result.getCount());
             postCacheInvalidationEventPublisher.publishEvictDetail(postId);
+            //发布点赞收藏信息到outbox
             notificationEventPublisher.publish(post.getUserId(), userId, "post_like", postId, null, "liked your post");
+            contentRankingService.refreshPost(postId);
+            userInterestService.recordInteraction(userId, postId, 2.0);
             return true;
         }
 
         postLikeMapper.delete(wrapper);
         updatePostLikeCount(post, result.getCount());
         postCacheInvalidationEventPublisher.publishEvictDetail(postId);
+        contentRankingService.refreshPost(postId);
+        userInterestService.recordInteraction(userId, postId, -2.0);
         return false;
     }
 
@@ -90,6 +105,8 @@ public class InteractionServiceImpl implements InteractionService {
             postMapper.updateById(post);
             postCacheInvalidationEventPublisher.publishEvictDetail(postId);
             notificationEventPublisher.publish(post.getUserId(), userId, "post_like", postId, null, "liked your post");
+            contentRankingService.refreshPost(postId);
+            userInterestService.recordInteraction(userId, postId, 2.0);
             return true;
         }
 
@@ -97,6 +114,8 @@ public class InteractionServiceImpl implements InteractionService {
         post.setLikeCount(Math.max(0, post.getLikeCount() - 1));
         postMapper.updateById(post);
         postCacheInvalidationEventPublisher.publishEvictDetail(postId);
+        contentRankingService.refreshPost(postId);
+        userInterestService.recordInteraction(userId, postId, -2.0);
         return false;
     }
 
@@ -162,12 +181,16 @@ public class InteractionServiceImpl implements InteractionService {
             updatePostFavoriteCount(post, result.getCount());
             postCacheInvalidationEventPublisher.publishEvictDetail(postId);
             notificationEventPublisher.publish(post.getUserId(), userId, "post_favorite", postId, null, "favorited your post");
+            contentRankingService.refreshPost(postId);
+            userInterestService.recordInteraction(userId, postId, 4.0);
             return true;
         }
 
         favoriteMapper.delete(wrapper);
         updatePostFavoriteCount(post, result.getCount());
         postCacheInvalidationEventPublisher.publishEvictDetail(postId);
+        contentRankingService.refreshPost(postId);
+        userInterestService.recordInteraction(userId, postId, -4.0);
         return false;
     }
 
@@ -184,6 +207,8 @@ public class InteractionServiceImpl implements InteractionService {
             postMapper.updateById(post);
             postCacheInvalidationEventPublisher.publishEvictDetail(postId);
             notificationEventPublisher.publish(post.getUserId(), userId, "post_favorite", postId, null, "favorited your post");
+            contentRankingService.refreshPost(postId);
+            userInterestService.recordInteraction(userId, postId, 4.0);
             return true;
         }
 
@@ -191,9 +216,15 @@ public class InteractionServiceImpl implements InteractionService {
         post.setFavoriteCount(Math.max(0, post.getFavoriteCount() - 1));
         postMapper.updateById(post);
         postCacheInvalidationEventPublisher.publishEvictDetail(postId);
+        contentRankingService.refreshPost(postId);
+        userInterestService.recordInteraction(userId, postId, -4.0);
         return false;
     }
 
+    /**
+     * 确保post_like相关信息被初始化
+     * @param postId
+     */
     private void ensurePostLikeCacheInitialized(Long postId) {
         if (postInteractionCacheService.isPostLikeInitialized(postId)) {
             return;
@@ -232,6 +263,12 @@ public class InteractionServiceImpl implements InteractionService {
         postMapper.updateById(post);
     }
 
+    /**
+     * 根据postId查询post状态
+     * 可以查看就返回post
+     * @param postId
+     * @return
+     */
     private Post checkPost(Long postId) {
         Post post = postMapper.selectById(postId);
         if (post == null || post.getStatus() != 1) {

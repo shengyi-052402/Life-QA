@@ -50,7 +50,7 @@ public class PostBloomFilterService {
             log.warn("Load post bloom filter failed", e);
         }
     }
-
+//新增帖子,并且对bitmap填充 1
     public void add(Long postId) {
         if (postId == null || bitSize <= 0 || hashCount <= 0) {
             return;
@@ -65,6 +65,11 @@ public class PostBloomFilterService {
         }
     }
 
+    /**
+     * 查询布隆过滤器是否命中
+     * @param postId
+     * @return
+     */
     public boolean mightContain(Long postId) {
         if (postId == null || bitSize <= 0 || hashCount <= 0) {
             return false;
@@ -95,6 +100,8 @@ public class PostBloomFilterService {
         return bloomFilterKey + READY_KEY_SUFFIX;
     }
 
+
+    //计算偏移量
     private long offset(Long postId, int seed) {
         long hash = fnv1a64(postId + ":" + seed);
         return Long.remainderUnsigned(hash, bitSize);

@@ -1,81 +1,49 @@
 package com.forum.server.messaging;
 
 import com.forum.server.messaging.event.NotificationEvent;
-import com.forum.server.service.NotificationService;
+import com.forum.pojo.entity.NotificationOutboxEvent;
+import com.forum.server.mapper.NotificationOutboxEventMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
-
-import java.util.concurrent.CompletableFuture;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class NotificationEventPublisher {
+public class  NotificationEventPublisher {
 
-    private final KafkaTemplate<String, NotificationEvent> kafkaTemplate;
-    private final NotificationService notificationService;
+    private final NotificationOutboxEventMapper outboxMapper;
 
-    @Value("${forum.kafka.topics.notification:forum.notification.events}")
-    private String notificationTopic;
-
+    /**
+     *
+     * @param receiverUserId 帖子作者id
+     * @param senderUserId 点赞者id
+     * @param type
+     * @param postId
+     * @param commentId
+     * @param content
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
     public void publish(Long receiverUserId, Long senderUserId, String type, Long postId, Long commentId, String content) {
         if (receiverUserId == null || senderUserId == null || receiverUserId.equals(senderUserId)) {
             return;
         }
 
-        NotificationEvent event = NotificationEvent.create(receiverUserId, senderUserId, type, postId, commentId, content);
-        publishAfterCommit(event);
-    }
-
-    private void publishAfterCommit(NotificationEvent event) {
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            sendAsync(event);
-            return;
-        }
-
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                // Only publish after the DB transaction commits, otherwise a rolled-back like/comment could still notify users.
-                sendAsync(event);
-            }
-        });
-    }
-
-    private void sendAsync(NotificationEvent event) {
-        // Kafka send can wait for broker metadata when Kafka is down; run it outside the request thread.
-        CompletableFuture.runAsync(() -> sendToKafka(event));
-    }
-
-    private void sendToKafka(NotificationEvent event) {
-        try {
-            kafkaTemplate.send(notificationTopic, event.messageKey(), event)
-                    .whenComplete((result, ex) -> {
-                        if (ex != null) {
-                            log.warn("Notification Kafka publish failed, fallback to direct DB insert. eventId={}", event.getEventId(), ex);
-                            fallbackToDatabase(event);
-                        }
-                    });
-        } catch (Exception ex) {
-            log.warn("Notification Kafka publish failed before send, fallback to direct DB insert. eventId={}", event.getEventId(), ex);
-            fallbackToDatabase(event);
-        }
-    }
-
-    private void fallbackToDatabase(NotificationEvent event) {
-        // Local development may start without Kafka; this fallback keeps the visible notification feature usable.
-        notificationService.createNotification(
-                event.getReceiverUserId(),
-                event.getSenderUserId(),
-                event.getType(),
-                event.getPostId(),
-                event.getCommentId(),
-                event.getContent()
-        );
+        outboxMapper.insert(NotificationOutboxEvent.builder()
+                .eventId(UUID.randomUUID().toString())
+                .receiverUserId(receiverUserId)
+                .senderUserId(senderUserId)
+                .type(type)
+                .postId(postId)
+                .commentId(commentId)
+                .content(content)
+                .status(0)
+                .retryCount(0)
+                .nextRetryAt(LocalDateTime.now())
+                .build());
     }
 }

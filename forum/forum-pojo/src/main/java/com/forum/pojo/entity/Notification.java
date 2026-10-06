@@ -23,6 +23,9 @@ public class Notification implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    /** The outbox event that created this notification; unique when populated. */
+    private String eventId;
+
     private Long receiverUserId;
 
     private Long senderUserId;

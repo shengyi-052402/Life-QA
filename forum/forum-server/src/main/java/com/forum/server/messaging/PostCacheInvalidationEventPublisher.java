@@ -21,15 +21,15 @@ public class PostCacheInvalidationEventPublisher {
 
     @Value("${forum.kafka.topics.post-cache-invalidation:forum.post-cache-invalidation.events}")
     private String postCacheInvalidationTopic;
-
+//清理postDetail信息
     public void publishEvictDetail(Long postId) {
         publishAfterCommit(PostCacheInvalidationEvent.evictDetail(postId));
     }
-
+//清理缓存信息---包括点赞集,收藏集
     public void publishEvictAll(Long postId) {
         publishAfterCommit(PostCacheInvalidationEvent.evictAll(postId));
     }
-
+//处理事物commit后的清理消息
     private void publishAfterCommit(PostCacheInvalidationEvent event) {
         if (event.getPostId() == null) {
             return;
@@ -47,11 +47,11 @@ public class PostCacheInvalidationEventPublisher {
             }
         });
     }
-
+//开启异步线程去发送消息
     private void sendAsync(PostCacheInvalidationEvent event) {
         CompletableFuture.runAsync(() -> sendToKafka(event));
     }
-
+//发送消息,设置了兜底的手动清理缓存
     private void sendToKafka(PostCacheInvalidationEvent event) {
         try {
             kafkaTemplate.send(postCacheInvalidationTopic, event.messageKey(), event)

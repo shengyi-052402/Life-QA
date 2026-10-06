@@ -47,6 +47,8 @@ public interface PostService extends IService<Post> {
      */
     PageResult<PostListVO> getPostPage(PostPageQueryDTO queryDTO);
 
+    PageResult<PostListVO> getRecommendationPage(Integer page, Integer size, Long categoryId);
+
     PageResult<AdminPostVO> getAdminPostPage(AdminPostPageQueryDTO queryDTO);
 
     void adminUpdatePost(Long id, AdminPostUpdateDTO dto);

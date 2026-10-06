@@ -2,6 +2,10 @@ server:
   port: ${SERVER_PORT:8080}
 
 spring:
+  config:
+    import:
+      - optional:file:../.env[.properties]
+      - optional:file:./application-local.yml
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
   datasource:
@@ -9,6 +13,13 @@ spring:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 6
+    validate-on-migrate: true
 
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
@@ -69,8 +80,13 @@ forum:
   kafka:
     topics:
       notification: ${FORUM_NOTIFICATION_TOPIC:forum.notification.events}
+      notification-dlt: ${FORUM_NOTIFICATION_DLT_TOPIC:forum.notification.events.DLT}
       search-index: ${FORUM_SEARCH_INDEX_TOPIC:forum.search-index.events}
       post-cache-invalidation: ${FORUM_POST_CACHE_INVALIDATION_TOPIC:forum.post-cache-invalidation.events}
+  distribution:
+    hot-rebuild-cron: ${FORUM_HOT_REBUILD_CRON:0 0 * * * *}
+    outbox-dispatch-delay-ms: ${FORUM_OUTBOX_DISPATCH_DELAY_MS:5000}
+    dead-letter-replay-delay-ms: ${FORUM_DEAD_LETTER_REPLAY_DELAY_MS:600000}
 knife4j:
   enable: ${KNIFE4J_ENABLE:true}
   openapi:

@@ -64,7 +64,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Bell, Search } from '@element-plus/icons-vue'
 import { useNotificationStore } from '@/stores/notification'
@@ -77,14 +77,53 @@ const notificationStore = useNotificationStore()
 const searchKeyword = ref('')
 const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
 let suggestTimer = null
+let unreadTimer = null
+
+async function refreshUnreadCount() {
+  if (!userStore.token || document.visibilityState !== 'visible') return
+  try {
+    await notificationStore.fetchUnreadCount()
+  } catch (error) {
+    // Keep the last successful count during a temporary network failure.
+  }
+}
+
+function stopUnreadPolling() {
+  if (!unreadTimer) return
+  window.clearInterval(unreadTimer)
+  unreadTimer = null
+}
+
+function startUnreadPolling() {
+  stopUnreadPolling()
+  if (!userStore.token) return
+  refreshUnreadCount()
+  unreadTimer = window.setInterval(refreshUnreadCount, 30000)
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === 'visible') refreshUnreadCount()
+}
 
 onMounted(async () => {
   if (userStore.token && !userStore.userInfo) {
     await userStore.fetchUserInfo()
   }
   if (userStore.token) {
-    await notificationStore.fetchUnreadCount()
+    startUnreadPolling()
   }
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+})
+
+watch(() => userStore.token, token => {
+  if (token) startUnreadPolling()
+  else stopUnreadPolling()
+})
+
+onBeforeUnmount(() => {
+  stopUnreadPolling()
+  if (suggestTimer) window.clearTimeout(suggestTimer)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 
 function handleCommand(command) {

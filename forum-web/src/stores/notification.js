@@ -11,7 +11,6 @@ export const useNotificationStore = defineStore('notification', () => {
       unreadCount.value = res.data || 0
       return unreadCount.value
     } catch (error) {
-      unreadCount.value = 0
       throw error
     }
   }

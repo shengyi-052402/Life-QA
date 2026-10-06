@@ -9,6 +9,10 @@ public interface NotificationService extends IService<Notification> {
 
     void createNotification(Long receiverUserId, Long senderUserId, String type, Long postId, Long commentId, String content);
 
+    /** Returns false when a Kafka redelivery has already been stored. */
+    boolean createNotificationFromEvent(String eventId, Long receiverUserId, Long senderUserId,
+                                        String type, Long postId, Long commentId, String content);
+
     void publishSystemNotification(String content);
 
     PageResult<NotificationVO> getMyNotifications(Integer page, Integer size, String type);

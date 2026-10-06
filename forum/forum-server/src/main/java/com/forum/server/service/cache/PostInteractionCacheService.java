@@ -43,6 +43,11 @@ public class PostInteractionCacheService {
         initializeSet(favoriteSetKey(postId), favoriteInitKey(postId), userIds);
     }
 
+    /**
+     * 判断post_like有没有初始化
+     * @param postId
+     * @return
+     */
     public boolean isPostLikeInitialized(Long postId) {
         return Boolean.TRUE.equals(stringRedisTemplate.hasKey(likeInitKey(postId)));
     }
@@ -50,11 +55,23 @@ public class PostInteractionCacheService {
     public boolean isPostFavoriteInitialized(Long postId) {
         return Boolean.TRUE.equals(stringRedisTemplate.hasKey(favoriteInitKey(postId)));
     }
-
+    /**
+     * 调用lua脚本,原子性的切换点赞状态
+     * 返回数据包含当前点赞收藏状态,及其数量count
+     * @param postId
+     * @param userId
+     * @return
+     */
     public Optional<ToggleResult> togglePostLike(Long postId, Long userId) {
         return toggleMembership(likeSetKey(postId), userId);
     }
-
+    /**
+     * 调用lua脚本,原子性的切换收藏状态
+     * 返回数据包含当前点赞收藏状态,及其数量count
+     * @param postId
+     * @param userId
+     * @return
+     */
     public Optional<ToggleResult> togglePostFavorite(Long postId, Long userId) {
         return toggleMembership(favoriteSetKey(postId), userId);
     }
@@ -85,6 +102,13 @@ public class PostInteractionCacheService {
         }
     }
 
+    /**
+     * 调用lua脚本,原子性的切换点赞/收藏状态
+     * 返回数据包含当前点赞收藏状态,及其数量count
+     * @param setKey
+     * @param userId
+     * @return
+     */
     private Optional<ToggleResult> toggleMembership(String setKey, Long userId) {
         try {
             // Lua 保证“判断是否已互动”和“添加/删除用户”在 Redis 内原子完成，避免并发重复点击造成状态翻转错乱。
@@ -132,6 +156,7 @@ public class PostInteractionCacheService {
     @Getter
     @AllArgsConstructor
     public static class ToggleResult {
+        //点赞收藏的状态
         private final boolean active;
         private final long count;
     }
