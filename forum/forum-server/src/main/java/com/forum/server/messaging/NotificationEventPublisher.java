@@ -19,7 +19,7 @@ public class  NotificationEventPublisher {
     private final NotificationOutboxEventMapper outboxMapper;
 
     /**
-     *
+     *通知写入Outbox
      * @param receiverUserId 帖子作者id
      * @param senderUserId 点赞者id
      * @param type

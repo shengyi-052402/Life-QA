@@ -123,7 +123,7 @@ public class PostDetailCacheService {
         }
     }
 
-    /** Durable workers must observe failure before acknowledging a projection. */
+    /** lua脚本删除缓存,先设置版本号再删缓存 */
     public void evictStrict(Long postId) {
         Long result = stringRedisTemplate.execute(EVICT_SCRIPT,
                 List.of(buildKey(postId), buildVersionKey(postId)), UUID.randomUUID().toString());
