@@ -10,6 +10,7 @@ output/playwright/
 # ========== IDE 文件 ==========
 .idea/
 .claude/
+.codex/
 *.iml
 .vscode/
 *.suo

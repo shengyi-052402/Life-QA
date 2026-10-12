@@ -1,0 +1,66 @@
+services:
+  backend:
+    build:
+      context: ./forum
+      dockerfile: Dockerfile
+    image: lifeqa-backend:local
+    container_name: lifeqa-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8080
+      DB_URL: jdbc:mysql://mysql:3306/forum?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      DB_USERNAME: "${MYSQL_USER:?请在 .env 中设置 MYSQL_USER}"
+      DB_PASSWORD: "${MYSQL_PASSWORD:?请在 .env 中设置 MYSQL_PASSWORD}"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+      REDIS_DATABASE: 0
+      KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      KAFKA_NOTIFICATION_GROUP_ID: "${KAFKA_NOTIFICATION_GROUP_ID:-forum-notification-consumer}"
+      JWT_SECRET: "${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}"
+      JWT_EXPIRATION: "${JWT_EXPIRATION:-86400000}"
+      CORS_ALLOWED_ORIGIN_PATTERNS: "${CORS_ALLOWED_ORIGIN_PATTERNS:-http://localhost:3000,http://127.0.0.1:3000}"
+      OSS_ENDPOINT: "${OSS_ENDPOINT:-}"
+      OSS_ACCESS_KEY_ID: "${OSS_ACCESS_KEY_ID:-}"
+      OSS_ACCESS_KEY_SECRET: "${OSS_ACCESS_KEY_SECRET:-}"
+      OSS_BUCKET_NAME: "${OSS_BUCKET_NAME:-}"
+      OSS_DOMAIN: "${OSS_DOMAIN:-}"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/categories"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  frontend:
+    build:
+      context: ./forum-web
+      dockerfile: Dockerfile
+      args:
+        VITE_AMAP_KEY: "${VITE_AMAP_KEY:-}"
+        VITE_AMAP_SECURITY_CODE: "${VITE_AMAP_SECURITY_CODE:-}"
+    image: lifeqa-frontend:local
+    container_name: lifeqa-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
